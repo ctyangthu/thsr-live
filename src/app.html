@@ -1,0 +1,912 @@
+<title>台灣高鐵動態系統</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Noto+Sans+TC:wght@400;500;700&display=swap">
+<style>
+/* Layout: one-screen operations console. Portrait map of Taiwan on the left, a rail of
+   status cards on the right (summary → selected train → tabs). Stacks on phones. */
+:root{
+  --bg:#E8ECEE; --surface:#FFFFFF; --surface-2:#F3F5F6; --ink:#151A1E; --muted:#5B666E; --rule:#D3DADE;
+  --sea:#D5E2E8; --land:#FAFAF6; --county:#C9D1D5; --coast:#8E9DA6;
+  --accent:#D14E17; --accent-ink:#FFFFFF; --accent-soft:#F7DFD2;
+  --south:#D14E17; --north:#22628D; --bar-base:#B9C3C9;
+  --track:#262D32; --track-casing:#FFFFFF;
+  --train-white:#FCFCFA; --train-black:#1C1F22; --train-orange:#E2601F; --train-glass:#2B3A45;
+  --board-bg:#0F1214; --board-ink:#F1F1EC; --board-amber:#FF9B3F; --board-dim:#7D878D; --board-rule:#283035;
+  --live:#2E9E5B; --tno-ink:#FFFFFF;
+  --font-display:"Barlow Condensed","Noto Sans TC",system-ui,sans-serif;
+  --font-body:"Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0C1114; --surface:#131A1F; --surface-2:#1B252B; --ink:#E5EAED; --muted:#94A1A9; --rule:#25313A;
+    --sea:#091013; --land:#1A2329; --county:#2E3A42; --coast:#4D5D67;
+    --accent:#F0692B; --accent-ink:#131A1F; --accent-soft:#3B2519;
+    --south:#F0692B; --north:#5AB3E2; --bar-base:#3A4850;
+    --track:#E5EAED; --track-casing:#0C1114; --tno-ink:#131A1F;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0C1114; --surface:#131A1F; --surface-2:#1B252B; --ink:#E5EAED; --muted:#94A1A9; --rule:#25313A;
+  --sea:#091013; --land:#1A2329; --county:#2E3A42; --coast:#4D5D67;
+  --accent:#F0692B; --accent-ink:#131A1F; --accent-soft:#3B2519;
+  --south:#F0692B; --north:#5AB3E2; --bar-base:#3A4850;
+  --track:#E5EAED; --track-casing:#0C1114; --tno-ink:#131A1F;
+  color-scheme:dark;
+}
+*,*::before,*::after{box-sizing:border-box}
+html,body{height:100%}
+body{background:var(--bg);color:var(--ink);font-family:var(--font-body);font-size:14px;line-height:1.5}
+button,select,input{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.num{font-family:var(--font-display);font-variant-numeric:tabular-nums;letter-spacing:.01em}
+
+.app{display:flex;flex-direction:column;height:100%}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--surface)}
+
+/* ── header ─────────────────────────────── */
+.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--surface);border-bottom:1px solid var(--rule);
+  padding-block:10px 12px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  display:flex;flex-wrap:wrap;align-items:center;gap:10px 28px}
+.brand{display:flex;align-items:center;gap:12px;min-width:0}
+.brand svg{flex:none}
+.brand h1{margin:0;font-size:20px;font-weight:700;letter-spacing:.04em;line-height:1.15;text-wrap:balance}
+.brand p{margin:2px 0 0;font-size:12px;color:var(--muted)}
+.clock{display:flex;align-items:center;gap:14px;margin-left:auto}
+.clock time{font:600 40px/1 var(--font-display);font-variant-numeric:tabular-nums;letter-spacing:.02em}
+.clock .when{display:grid;gap:2px;font-size:12.5px;color:var(--muted)}
+.clock .when b{color:var(--ink);font-weight:500}
+.pill{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:500;padding:2px 9px;border-radius:999px;border:1px solid var(--rule);width:max-content}
+.pill i{width:7px;height:7px;border-radius:50%;background:var(--muted)}
+.pill.live i{background:var(--live);box-shadow:0 0 0 3px color-mix(in srgb,var(--live) 25%,transparent);animation:blink 1.6s infinite}
+.pill.sim i{background:var(--accent)}
+@keyframes blink{50%{opacity:.35}}
+
+.toolbar{flex-basis:100%;display:flex;flex-wrap:wrap;align-items:center;gap:10px 18px}
+.days{display:inline-flex;border:1px solid var(--rule);border-radius:10px;overflow:hidden;background:var(--surface)}
+.days button{border:0;background:transparent;padding:5px 0 4px;width:48px;display:grid;justify-items:center;gap:0;position:relative}
+.days button+button{border-left:1px solid var(--rule)}
+.days button b{font-size:14px;font-weight:700;line-height:1.3}
+.days button span{font:600 12.5px/1.1 var(--font-display);color:var(--muted);font-variant-numeric:tabular-nums}
+.days button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink)}
+.days button[aria-pressed="true"] span{color:var(--accent-ink);opacity:.85}
+.days button.today::after{content:"今";position:absolute;top:2px;right:3px;font-size:9px;line-height:1;color:var(--accent)}
+.days button.today[aria-pressed="true"]::after{color:var(--accent-ink)}
+.field{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--muted)}
+.field input[type=date],.field select{border:1px solid var(--rule);border-radius:8px;background:var(--surface);padding:5px 8px;color:var(--ink)}
+.play{display:flex;align-items:center;gap:8px;flex:1 1 360px;min-width:0}
+.btn{border:1px solid var(--rule);background:var(--surface);border-radius:8px;padding:5px 11px;font-size:13px;font-weight:500;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.btn:hover{background:var(--surface-2)}
+.btn[aria-pressed="true"]{border-color:var(--accent);color:var(--accent)}
+.btn.icon{width:34px;justify-content:center;padding:5px 0}
+.play input[type=range]{flex:1;min-width:110px;accent-color:var(--accent)}
+.play output{font:600 15px var(--font-display);font-variant-numeric:tabular-nums;min-width:44px;color:var(--muted)}
+
+/* ── main grid ──────────────────────────── */
+main{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) minmax(360px,440px);gap:16px;
+  padding-block:16px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.mapwrap{position:relative;min-height:0;border-radius:14px;overflow:hidden;background:var(--sea);border:1px solid var(--rule)}
+#map{display:block;width:100%;height:100%;touch-action:none;user-select:none;cursor:grab}
+#map.dragging{cursor:grabbing}
+.rail{min-height:0;min-width:0;overflow:auto;display:flex;flex-direction:column;gap:14px;padding-bottom:4px}
+
+/* map svg */
+.land path{fill:var(--land);stroke:var(--county);stroke-width:.8;vector-effect:non-scaling-stroke}
+.tropic{stroke:var(--coast);stroke-width:1;stroke-dasharray:5 6;vector-effect:non-scaling-stroke;fill:none;opacity:.8}
+.sea-label{fill:var(--coast);font-size:13px;letter-spacing:.5em;font-weight:500}
+.sea-label.small{font-size:10.5px;letter-spacing:.08em}
+#trackCasing{fill:none;stroke:var(--track-casing);stroke-width:7;stroke-linecap:round;stroke-linejoin:round;vector-effect:non-scaling-stroke}
+#track{fill:none;stroke:var(--track);stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round;vector-effect:non-scaling-stroke}
+.st{cursor:pointer}
+.st .hit{fill:transparent}
+.st .dot{fill:var(--surface);stroke:var(--track);stroke-width:2.2}
+.st.sel .dot{fill:var(--accent);stroke:var(--accent)}
+.st .zh{font-size:13px;font-weight:700;fill:var(--ink);paint-order:stroke;stroke:var(--land);stroke-width:3.5px;stroke-linejoin:round}
+.st .en{font-size:9.5px;font-family:var(--font-display);font-weight:600;letter-spacing:.06em;fill:var(--muted);paint-order:stroke;stroke:var(--land);stroke-width:3px;stroke-linejoin:round;text-transform:uppercase}
+.st:hover .zh{fill:var(--accent)}
+.trn{cursor:pointer}
+.trn .hit{fill:transparent}
+.trn .body{fill:var(--train-white);stroke-width:1.6}
+.trn .stripe{fill:none;stroke-width:1.5;stroke-linecap:round}
+.trn .glass{fill:var(--train-glass)}
+.trn.S .body,.trn.S .stripe{stroke:var(--south)}
+.trn.N .body,.trn.N .stripe{stroke:var(--north)}
+.trn .ring{fill:none;stroke-width:2;opacity:0}
+.trn.S .ring{stroke:var(--south)} .trn.N .ring{stroke:var(--north)}
+.trn.sel .ring{opacity:1;animation:pulse 1.8s ease-out infinite}
+.trn.dwell .body{stroke-dasharray:3 2}
+@keyframes pulse{0%{opacity:.9;transform:scale(.8)}100%{opacity:0;transform:scale(1.9)}}
+.tlabel{font:700 12px var(--font-display);letter-spacing:.03em;paint-order:stroke;stroke:var(--land);stroke-width:3.5px;stroke-linejoin:round;pointer-events:none}
+.tlabel.S{fill:var(--south)} .tlabel.N{fill:var(--north)}
+
+/* map overlays */
+.ov{position:absolute;background:color-mix(in srgb,var(--surface) 90%,transparent);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);border:1px solid var(--rule);border-radius:10px}
+.legend{left:12px;top:12px;padding:9px 12px;display:grid;gap:5px;font-size:12.5px}
+.legend .row{display:flex;align-items:center;gap:8px}
+.legend .sw{width:22px;height:8px;border-radius:4px 7px 7px 4px;background:var(--train-white);border:1.6px solid}
+.legend .sw.S{border-color:var(--south)} .legend .sw.N{border-color:var(--north)}
+.legend b{font:700 15px var(--font-display);min-width:18px;text-align:right;font-variant-numeric:tabular-nums}
+.legend small{color:var(--muted);font-size:11px}
+.mapctl{position:absolute;left:12px;bottom:12px;display:flex;flex-direction:column;align-items:flex-start;gap:8px}
+.mapctl .ov{position:static}
+.regions{display:flex;padding:3px;gap:2px}
+.regions button{border:0;background:transparent;border-radius:7px;padding:4px 9px;font-size:12.5px;font-weight:500}
+.regions button:hover{background:var(--surface-2)}
+.regions button[aria-pressed="true"]{background:var(--ink);color:var(--surface)}
+.zoom{right:12px;bottom:12px;display:grid;padding:3px;gap:2px}
+.zoom button{border:0;background:transparent;width:32px;height:32px;border-radius:7px;font-size:18px;line-height:1}
+.zoom button:hover{background:var(--surface-2)}
+.scalebar{padding:6px 10px 5px;font:600 12px var(--font-display);color:var(--muted)}
+.scalebar i{display:block;height:6px;border:1.5px solid var(--ink);border-top:0;margin-bottom:2px}
+.offhours{left:50%;top:50%;transform:translate(-50%,-50%);padding:14px 18px;text-align:center;max-width:280px;font-size:13px}
+.offhours b{display:block;font-size:15px;margin-bottom:4px}
+
+/* ── cards ─────────────────────────────── */
+.card{background:var(--surface);border:1px solid var(--rule);border-radius:14px;padding:14px 16px}
+.card h2{margin:0;font-size:16px;font-weight:700;letter-spacing:.02em}
+.card-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:10px}
+.card-head small{color:var(--muted);font-size:12px}
+.kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-bottom:14px}
+.kpi{display:grid;gap:0}
+.kpi b{font:600 28px/1.05 var(--font-display);font-variant-numeric:tabular-nums}
+.kpi span{font-size:12px;color:var(--muted)}
+.kpi.S b{color:var(--south)} .kpi.N b{color:var(--north)}
+.week{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:8px;align-items:end}
+.wk{border:0;background:transparent;padding:0;display:grid;gap:3px;justify-items:center}
+.wk .cnt{font:600 13px var(--font-display);font-variant-numeric:tabular-nums;color:var(--muted)}
+.wk .bar{width:100%;max-width:34px;height:76px;display:flex;flex-direction:column;justify-content:flex-end;border-radius:4px;overflow:hidden}
+.wk .bar i{display:block;width:100%}
+.wk .bar .x{background:var(--accent);opacity:.55}
+.wk .bar .b{background:var(--bar-base)}
+.wk .lab{font-size:12.5px;font-weight:500;color:var(--muted)}
+.wk[aria-pressed="true"] .cnt,.wk[aria-pressed="true"] .lab{color:var(--ink);font-weight:700}
+.wk[aria-pressed="true"] .bar .x{opacity:1}
+.wk[aria-pressed="true"] .bar{outline:2px solid var(--ink);outline-offset:2px}
+.wk-legend{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:10px;font-size:12px;color:var(--muted)}
+.wk-legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+.note{margin:10px 0 0;font-size:12.5px;color:var(--muted);line-height:1.6}
+.note b{color:var(--ink);font-weight:500}
+
+/* train number badge */
+.tno{display:inline-flex;align-items:center;justify-content:center;min-width:48px;padding:1px 7px;border-radius:6px;font:700 15px/1.35 var(--font-display);letter-spacing:.03em;font-variant-numeric:tabular-nums;color:var(--tno-ink)}
+.tno.S{background:var(--south)} .tno.N{background:var(--north)}
+
+/* detail */
+.detail-head{display:flex;align-items:flex-start;gap:12px}
+.detail-head .tno{font-size:20px;min-width:62px;padding:3px 8px}
+.detail-head h3{margin:0;font-size:17px;font-weight:700}
+.detail-head p{margin:1px 0 0;font-size:12.5px;color:var(--muted)}
+.detail-head .grow{flex:1;min-width:0}
+.detail-actions{display:flex;gap:6px}
+.train-art{display:block;width:100%;height:auto;margin:10px 0 2px}
+.status{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 14px;padding:9px 12px;background:var(--surface-2);border-radius:10px;font-size:13px}
+.status b{font-weight:700}
+.status .spd{margin-left:auto;font:600 20px var(--font-display);font-variant-numeric:tabular-nums}
+.status .spd small{font-size:12px;color:var(--muted);font-family:var(--font-body);font-weight:400;margin-left:2px}
+.dayrow{display:flex;align-items:center;gap:10px;margin:10px 0 4px;font-size:12.5px;color:var(--muted)}
+.dd{display:inline-flex;gap:3px}
+.dd i{font-style:normal;width:20px;height:20px;border-radius:5px;display:inline-grid;place-items:center;font-size:11px;font-weight:500;background:var(--surface-2);color:var(--muted)}
+.dd i.on{background:var(--ink);color:var(--surface)}
+.dd i.cur{outline:2px solid var(--accent);outline-offset:1px}
+.dd.mini i{width:9px;height:9px;border-radius:2px;font-size:0}
+.stops{list-style:none;margin:10px 0 0;padding:0;display:grid}
+.stops li{display:grid;grid-template-columns:52px 18px minmax(0,1fr) auto;align-items:center;gap:8px;min-height:28px;font-size:13.5px}
+.stops .t{font:600 15px var(--font-display);font-variant-numeric:tabular-nums;text-align:right}
+.stops .pin{position:relative;height:100%;display:grid;place-items:center}
+.stops .pin::before{content:"";position:absolute;top:0;bottom:0;width:2px;background:var(--rule)}
+.stops li:first-child .pin::before{top:50%} .stops li:last-child .pin::before{bottom:50%}
+.stops .pin i{position:relative;width:10px;height:10px;border-radius:50%;background:var(--surface);border:2px solid var(--muted)}
+.stops li.pass .pin i{width:6px;height:6px;border-width:0;background:var(--rule)}
+.stops li.pass{color:var(--muted);font-size:12.5px;min-height:20px}
+.stops li.pass .t{font-size:12px;color:var(--muted);font-weight:500}
+.stops li.done{color:var(--muted)}
+.stops li.done .pin i{background:var(--muted);border-color:var(--muted)}
+.stops li.done .pin::before{background:var(--muted)}
+.stops li.now .pin i{background:var(--accent);border-color:var(--accent);box-shadow:0 0 0 4px var(--accent-soft)}
+.stops li.now{font-weight:700}
+.stops .tag{font-size:11.5px;color:var(--muted)}
+.stops li.now .tag,.stops li.next .tag{color:var(--accent);font-weight:700}
+.stops li.next .pin i{border-color:var(--accent)}
+.fleet{margin:12px 0 0;font-size:12px;color:var(--muted);line-height:1.6;border-top:1px solid var(--rule);padding-top:10px}
+
+/* tabs */
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--rule);margin:-4px -4px 12px}
+.tabs button{border:0;background:transparent;padding:7px 12px 9px;font-size:14px;font-weight:500;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+.tabs button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent);font-weight:700}
+.tabs button span{font:600 13px var(--font-display);margin-left:4px;color:var(--muted)}
+
+/* running list */
+.runlist{list-style:none;margin:0;padding:0;display:grid;gap:2px}
+.runrow{width:100%;border:0;background:transparent;border-radius:9px;padding:7px 8px;display:grid;grid-template-columns:auto minmax(0,1fr) auto;grid-template-rows:auto auto;column-gap:10px;row-gap:5px;text-align:left;align-items:center}
+.runrow:hover,.runrow.sel{background:var(--surface-2)}
+.runrow .rm{min-width:0;display:grid}
+.runrow .rm b{font-size:13.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.runrow .rm small{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.runrow .rn{text-align:right;display:grid;font-size:12px;color:var(--muted)}
+.runrow .rn b{font:600 15px var(--font-display);color:var(--ink);font-variant-numeric:tabular-nums}
+.runrow .pg{grid-column:1/-1;height:3px;border-radius:2px;background:var(--rule);overflow:hidden}
+.runrow .pg i{display:block;height:100%;width:0}
+.runrow.S .pg i{background:var(--south)} .runrow.N .pg i{background:var(--north)}
+.empty{padding:18px 6px;text-align:center;color:var(--muted);font-size:13px;display:grid;gap:10px;justify-items:center}
+.subhead{display:flex;justify-content:space-between;align-items:center;margin:2px 4px 6px;font-size:12px;color:var(--muted)}
+.subhead b{color:var(--ink)}
+
+/* station board — always the dark LED board found on THSR concourses */
+.stchips{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:4px;margin-bottom:10px}
+.stchips button{border:1px solid var(--rule);background:var(--surface);border-radius:7px;padding:4px 0;font-size:13px;font-weight:500}
+.stchips button[aria-pressed="true"]{background:var(--ink);color:var(--surface);border-color:var(--ink)}
+.board{background:var(--board-bg);color:var(--board-ink);border-radius:12px;padding:12px 14px 10px;color-scheme:dark}
+.board-head{display:flex;justify-content:space-between;align-items:baseline;border-bottom:1px solid var(--board-rule);padding-bottom:8px;margin-bottom:6px}
+.board-head b{font-size:18px;letter-spacing:.08em}
+.board-head span{font:600 12px var(--font-display);letter-spacing:.14em;color:var(--board-dim);margin-left:8px;text-transform:uppercase}
+.board-head time{font:600 22px var(--font-display);color:var(--board-amber);font-variant-numeric:tabular-nums}
+.bdir{margin-top:6px}
+.bdir h4{margin:4px 0 2px;font-size:12px;font-weight:500;color:var(--board-dim);letter-spacing:.06em;display:flex;justify-content:space-between}
+.brow{display:grid;grid-template-columns:50px 50px minmax(0,1fr) auto;gap:8px;align-items:center;padding:4px 0;border-top:1px solid var(--board-rule);font-size:13.5px}
+.brow .bt{font:600 18px var(--font-display);color:var(--board-amber);font-variant-numeric:tabular-nums}
+.brow .bn{font:600 16px var(--font-display);font-variant-numeric:tabular-nums}
+.brow .bd{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.brow .bd small{color:var(--board-dim);margin-left:6px;font-size:11.5px}
+.brow .bs{font-size:12px;color:var(--board-dim);text-align:right;white-space:nowrap}
+.brow .bs.hot{color:var(--board-amber);font-weight:700;animation:blink 1.2s infinite}
+.bnone{padding:8px 0;color:var(--board-dim);font-size:12.5px;border-top:1px solid var(--board-rule)}
+.board-foot{margin-top:8px;font-size:11px;color:var(--board-dim)}
+
+/* timetable */
+.ttbar{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;margin-bottom:10px}
+.seg{display:inline-flex;border:1px solid var(--rule);border-radius:8px;overflow:hidden}
+.seg button{border:0;background:transparent;padding:4px 12px;font-size:13px;font-weight:500}
+.seg button+button{border-left:1px solid var(--rule)}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--surface)}
+.ttbar label{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--muted)}
+.ttbar input[type=search]{border:1px solid var(--rule);border-radius:8px;background:var(--surface);padding:4px 8px;width:96px}
+.ttwrap{overflow:auto;max-height:560px;border:1px solid var(--rule);border-radius:10px}
+.tt{border-collapse:collapse;font-size:13px;white-space:nowrap;min-width:100%}
+.tt th{position:sticky;top:0;background:var(--surface-2);font-size:12px;font-weight:700;padding:6px 6px;text-align:center;z-index:1;border-bottom:1px solid var(--rule)}
+.tt th:first-child,.tt td:first-child{position:sticky;left:0;background:var(--surface);z-index:2}
+.tt th:first-child{z-index:3;background:var(--surface-2)}
+.tt td{padding:3px 6px;text-align:center;font:500 14px var(--font-display);font-variant-numeric:tabular-nums;border-bottom:1px solid var(--rule)}
+.tt td.no{font-weight:700;text-align:left;cursor:pointer}
+.tt td .ps{color:var(--muted);font-family:var(--font-body);font-size:11px}
+.tt tr{cursor:pointer}
+.tt tr:hover td{background:var(--surface-2)}
+.tt tr.run td{background:var(--accent-soft)}
+.tt tr.run td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
+.tt tr.gone td{color:var(--muted)}
+.tt tr.off td{opacity:.45}
+.tt tr.sel td{outline:1.5px solid var(--accent);outline-offset:-1.5px}
+.ttcount{font-size:12px;color:var(--muted);margin:8px 2px 0}
+
+.foot{font-size:11.5px;color:var(--muted);line-height:1.7;padding:2px 4px 8px}
+.foot a{color:inherit}
+
+@media (max-width:960px){
+  html,body,.app{height:auto}
+  main{grid-template-columns:minmax(0,1fr)}
+  .mapwrap{height:74vh;min-height:440px}
+  .rail{overflow:visible}
+  .top{position:static}
+  .clock{margin-left:0}
+}
+@media (max-width:560px){
+  .clock time{font-size:32px}
+  .days button{width:40px}
+  .play{gap:6px}
+  .play input[type=range]{min-width:60px}
+  .play output{min-width:38px}
+  .kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .regions button{padding:4px 7px}
+  .legend{font-size:12px}
+}
+@media (prefers-reduced-motion: reduce){
+  .pill.live i,.trn.sel .ring,.brow .bs.hot{animation:none}
+  .trn.sel .ring{opacity:1}
+}
+</style>
+
+<div class="app">
+  <header class="top">
+    <div class="brand">
+      <svg width="46" height="28" viewBox="0 0 46 28" aria-hidden="true">
+        <path d="M45 6H22C14 6 7 10 3 17C2 19 2 21 4 22H45Z" fill="var(--train-white)" stroke="var(--ink)" stroke-width="1.4"/>
+        <path d="M4 20C12 17 20 16 30 16H45" fill="none" stroke="var(--train-orange)" stroke-width="2.2"/>
+        <path d="M5 21.5C13 19.5 21 19 30 19H45" fill="none" stroke="var(--train-black)" stroke-width="1.6"/>
+        <path d="M13 12C17 9.5 21 9 26 9V12.5L13 13.5Z" fill="var(--train-glass)"/>
+      </svg>
+      <div>
+        <h1>台灣高鐵動態系統</h1>
+        <p>南港 ⇄ 左營 · 12 站 · N700ST · 2026/2/2 起適用時刻表</p>
+      </div>
+    </div>
+    <div class="clock">
+      <time id="clock" class="num">--:--:--</time>
+      <div class="when">
+        <span id="modePill" class="pill live"><i></i><span>即時</span></span>
+        <b id="whenText">—</b>
+      </div>
+    </div>
+    <div class="toolbar">
+      <div class="days" id="dayBtns" role="group" aria-label="選擇星期班表"></div>
+      <label class="field" for="datePick">指定日期 <input type="date" id="datePick"></label>
+      <div class="play">
+        <button class="btn" id="liveBtn" aria-pressed="true" title="回到台灣現在時間">● 即時</button>
+        <button class="btn icon" id="playBtn" aria-label="暫停">❚❚</button>
+        <select id="speedSel" class="btn" aria-label="模擬速度">
+          <option value="1">1×</option><option value="10">10×</option><option value="60" selected>60×</option><option value="300">300×</option><option value="900">900×</option>
+        </select>
+        <input type="range" id="slider" min="300" max="1500" step="1" value="480" aria-label="模擬時間">
+        <output id="sliderOut" for="slider">08:00</output>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section class="mapwrap" aria-label="台灣高鐵路線圖">
+      <svg id="map" role="img" aria-label="台灣地圖與高鐵列車位置">
+        <rect id="sea" fill="var(--sea)"/>
+        <g class="land" id="land"></g>
+        <path class="tropic" id="tropic"/>
+        <g id="fixedLabels"></g>
+        <path id="trackCasing"/>
+        <path id="track"/>
+        <g id="stations"></g>
+        <g id="trains"></g>
+        <g id="trainLabels"></g>
+      </svg>
+      <div class="ov legend" aria-live="polite">
+        <div class="row"><span class="sw S"></span>南下<b id="lgS">0</b><small>往左營</small></div>
+        <div class="row"><span class="sw N"></span>北上<b id="lgN">0</b><small>往南港</small></div>
+        <small>列車靠左行駛 · 虛框為停靠中</small>
+      </div>
+      <div class="mapctl">
+        <div class="ov scalebar"><i id="scaleBar" style="width:60px"></i><span id="scaleTxt">50 km</span></div>
+        <div class="ov regions" role="group" aria-label="地圖範圍">
+          <button data-r="all" aria-pressed="true">全島</button>
+          <button data-r="line" aria-pressed="false">全線</button>
+          <button data-r="north" aria-pressed="false">北部</button>
+          <button data-r="mid" aria-pressed="false">中部</button>
+          <button data-r="south" aria-pressed="false">南部</button>
+        </div>
+      </div>
+      <div class="ov zoom">
+        <button id="zIn" aria-label="放大">+</button>
+        <button id="zOut" aria-label="縮小">−</button>
+      </div>
+      <div class="ov offhours" id="offhours" hidden>
+        <b>目前沒有列車運行</b>
+        <span id="offText">營運時間約 05:50 至隔日 00:05。</span>
+        <div style="margin-top:10px"><button class="btn" data-jump="480">看 08:00 尖峰</button></div>
+      </div>
+    </section>
+
+    <aside class="rail">
+      <section class="card" aria-labelledby="sumTitle">
+        <div class="card-head"><h2 id="sumTitle">週二運行概況</h2><small>點選長條切換星期</small></div>
+        <div class="kpis">
+          <div class="kpi"><b id="kTotal">0</b><span>本日班次</span></div>
+          <div class="kpi S"><b id="kS">0</b><span>南下</span></div>
+          <div class="kpi N"><b id="kN">0</b><span>北上</span></div>
+          <div class="kpi"><b id="kRun">0</b><span>目前運行</span></div>
+        </div>
+        <div class="week" id="week"></div>
+        <div class="wk-legend"><span><i style="background:var(--bar-base)"></i>每日行駛</span><span><i style="background:var(--accent)"></i>僅指定星期行駛</span></div>
+        <p class="note" id="sumNote"></p>
+      </section>
+
+      <section class="card" id="detail" hidden aria-live="polite"></section>
+
+      <section class="card">
+        <div class="tabs" role="tablist">
+          <button role="tab" id="tab-run" aria-selected="true" data-tab="run">運行中<span id="tabRunN">0</span></button>
+          <button role="tab" id="tab-board" aria-selected="false" data-tab="board">車站看板</button>
+          <button role="tab" id="tab-tt" aria-selected="false" data-tab="tt">時刻表</button>
+        </div>
+        <div id="pane-run"></div>
+        <div id="pane-board" hidden>
+          <div class="stchips" id="stChips" role="group" aria-label="選擇車站"></div>
+          <div class="board" id="board"></div>
+        </div>
+        <div id="pane-tt" hidden>
+          <div class="ttbar">
+            <div class="seg" id="ttDir"><button data-d="S" aria-pressed="true">南下</button><button data-d="N" aria-pressed="false">北上</button></div>
+            <label><input type="checkbox" id="ttOnly" checked> 只列本日行駛</label>
+            <input type="search" id="ttQ" placeholder="車次" inputmode="numeric" aria-label="搜尋車次">
+          </div>
+          <div class="ttwrap"><table class="tt" id="tt"></table></div>
+          <p class="ttcount" id="ttCount"></p>
+        </div>
+      </section>
+
+      <p class="foot">
+        資料來源：台灣高鐵〈2026/2/2 起適用時刻表〉（<a href="https://www.thsrc.com.tw/ArticleContent/a3b630bb-1066-4352-a1ef-58c7b4e8ef7c" target="_blank" rel="noopener">thsrc.com.tw</a>）。列車位置依時刻表推算（停站 1 分鐘、加減速估算），不含誤點等即時資訊；國定假日與連假疏運期間依高鐵另行公告之時刻表行駛，本系統未納入。
+      </p>
+    </aside>
+  </main>
+</div>
+
+<script id="tt-data" type="application/json">__TIMETABLE_JSON__</script>
+<script id="map-data" type="application/json">__MAP_JSON__</script>
+<script>
+(() => {
+'use strict';
+const RAW = JSON.parse(document.getElementById('tt-data').textContent);
+const MAP = JSON.parse(document.getElementById('map-data').textContent);
+const SVGNS = 'http://www.w3.org/2000/svg';
+const DAY = ['一','二','三','四','五','六','日'];
+const $ = id => document.getElementById(id);
+
+/* ── stations (north → south) ─────────────────────────────── */
+const ST = [
+  ['南港','Nangang',25.0533,121.6071],['台北','Taipei',25.0477,121.5170],['板橋','Banqiao',25.0144,121.4637],
+  ['桃園','Taoyuan',25.0129,121.2149],['新竹','Hsinchu',24.8082,121.0402],['苗栗','Miaoli',24.6055,120.8256],
+  ['台中','Taichung',24.1122,120.6158],['彰化','Changhua',23.8743,120.5749],['雲林','Yunlin',23.7363,120.4164],
+  ['嘉義','Chiayi',23.4595,120.3233],['台南','Tainan',22.9250,120.2857],['左營','Zuoying',22.6873,120.3077],
+].map(([zh,en,lat,lon],i)=>({i,zh,en,lat,lon}));
+// approximate alignment between consecutive stations, [lat, lon]
+const VIA = [
+  [[25.0493,121.5778]],
+  [[25.0335,121.4999],[25.0262,121.4850]],
+  [[25.0030,121.4300],[25.0300,121.3720],[25.0340,121.3100],[25.0220,121.2550]],
+  [[24.9550,121.1700],[24.8850,121.1000]],
+  [[24.7420,120.9680],[24.6720,120.8920]],
+  [[24.5000,120.7920],[24.4050,120.7520],[24.3050,120.7050],[24.2050,120.6450]],
+  [[24.0000,120.6000]],
+  [[23.8120,120.5020]],
+  [[23.6000,120.3720]],
+  [[23.3000,120.3100],[23.1000,120.2920]],
+  [[22.8000,120.2910]],
+];
+// label placement in screen px relative to the station dot
+const LBL = {0:[14,-1,'start'],1:[0,-27,'middle'],2:[-14,8,'end']};
+
+const [LON0,LAT0,LATR,K] = MAP.proj;
+const COS = Math.cos(LATR*Math.PI/180);
+const proj = (lat,lon) => [(lon-LON0)*COS*K, (LAT0-lat)*K];
+const KM_PER_UNIT_GEO = 0.11119;  // 1/1000° of latitude
+
+/* ── track geometry: centripetal Catmull–Rom through stations + waypoints ── */
+const ctrl = [], ctrlStation = new Map();
+ST.forEach((s,i)=>{ ctrlStation.set(ctrl.length,i); ctrl.push(proj(s.lat,s.lon)); if (VIA[i]) VIA[i].forEach(([la,lo])=>ctrl.push(proj(la,lo))); });
+function cr(p0,p1,p2,p3,u){
+  const d=(a,b)=>Math.max(1e-4,Math.sqrt(Math.hypot(b[0]-a[0],b[1]-a[1])));
+  const t0=0,t1=t0+d(p0,p1),t2=t1+d(p1,p2),t3=t2+d(p2,p3), t=t1+(t2-t1)*u;
+  const L=(a,b,ta,tb)=>[(tb-t)/(tb-ta)*a[0]+(t-ta)/(tb-ta)*b[0],(tb-t)/(tb-ta)*a[1]+(t-ta)/(tb-ta)*b[1]];
+  const A1=L(p0,p1,t0,t1),A2=L(p1,p2,t1,t2),A3=L(p2,p3,t2,t3),B1=L(A1,A2,t0,t2),B2=L(A2,A3,t1,t3);
+  return L(B1,B2,t1,t2);
+}
+const PX=[],PY=[],CS=[],STS=new Array(ST.length);
+const pushPt=p=>{ if(PX.length){ CS.push(CS[CS.length-1]+Math.hypot(p[0]-PX[PX.length-1],p[1]-PY[PY.length-1])); } else CS.push(0); PX.push(p[0]); PY.push(p[1]); };
+for (let i=0;i<ctrl.length-1;i++){
+  const p1=ctrl[i],p2=ctrl[i+1];
+  const p0=ctrl[i-1]||[2*p1[0]-p2[0],2*p1[1]-p2[1]], p3=ctrl[i+2]||[2*p2[0]-p1[0],2*p2[1]-p1[1]];
+  const n=Math.max(4,Math.ceil(Math.hypot(p2[0]-p1[0],p2[1]-p1[1])/10));
+  for (let j=0;j<n;j++){ pushPt(j===0?p1:cr(p0,p1,p2,p3,j/n)); if(j===0 && ctrlStation.has(i)) STS[ctrlStation.get(i)]=CS[CS.length-1]; }
+}
+pushPt(ctrl[ctrl.length-1]); STS[ST.length-1]=CS[CS.length-1];
+const LINE_LEN=CS[CS.length-1];
+const KMU = 350/LINE_LEN;  // scale to the ~350 km Nangang–Zuoying route length
+function at(s){
+  s=Math.max(0,Math.min(LINE_LEN,s));
+  let lo=0,hi=CS.length-1; while(hi-lo>1){ const m=(lo+hi)>>1; if(CS[m]<=s) lo=m; else hi=m; }
+  const dx=PX[hi]-PX[lo], dy=PY[hi]-PY[lo], L=Math.hypot(dx,dy)||1, f=(s-CS[lo])/((CS[hi]-CS[lo])||1);
+  return {x:PX[lo]+dx*f, y:PY[lo]+dy*f, tx:dx/L, ty:dy/L};
+}
+
+/* ── timetable model ─────────────────────────────── */
+const PRE=8, DWELL=1, POST=3;   // minutes shown at origin before departure / dwell / shown after arrival
+const toMin=s=>{ const [h,m]=s.split(':').map(Number); return h*60+m; };
+const fmt=m=>{ m=((Math.round(m)%1440)+1440)%1440; return String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0'); };
+const TRAINS = RAW.map(r=>{
+  const order=r.dir==='S'?[...Array(12).keys()]:[...Array(12).keys()].reverse();
+  const stops=[], route=[]; let prev=-1, off=0;
+  for (const i of order){
+    const v=r.t[i]; if(v==null) continue;
+    if (v==='─'){ route.push({st:i,pass:true}); continue; }
+    let m=toMin(v)+off; if(prev>=0 && m<prev){ off+=1440; m+=1440; } prev=m;
+    const s={st:i,time:m}; stops.push(s); route.push(s);
+  }
+  stops.forEach((s,k)=>{
+    if(k===0){ s.arr=s.time-PRE; s.dep=s.time; }
+    else if(k===stops.length-1){ s.arr=s.time; s.dep=s.time+POST; }
+    else { s.arr=s.time-DWELL; s.dep=s.time; }
+  });
+  const daily=r.days.every(Boolean);
+  return {no:r.no, dir:r.dir, days:r.days, daily, stops, route, from:stops[0].st, to:stops[stops.length-1].st,
+          start:stops[0].arr, end:stops[stops.length-1].dep, first:stops[0].time, last:stops[stops.length-1].time,
+          stopAt:new Map(stops.map(s=>[s.st,s])), nStops:stops.length};
+});
+const BYNO = new Map(TRAINS.map(t=>[t.no,t]));
+const DAYTRAINS = DAY.map((_,d)=>TRAINS.filter(t=>t.days[d]));
+const DAILY_N = TRAINS.filter(t=>t.daily).length;
+const typeLabel = tr => tr.nStops===12 ? '每站停靠' : `停靠 ${tr.nStops} 站`;
+const daysLabel = tr => tr.daily ? '每日行駛' : '週' + tr.days.map((v,i)=>v?DAY[i]:'').join('') + ' 行駛';
+
+// trapezoidal speed profile: share `a` of the run accelerating and decelerating
+const prof=(u,a)=>{ const v=1/(1-a); return u<a? v*u*u/(2*a) : u>1-a? 1-v*(1-u)*(1-u)/(2*a) : v*(a/2+(u-a)); };
+const vprof=(u,a)=>{ const v=1/(1-a); return u<a? v*u/a : u>1-a? v*(1-u)/a : v; };
+
+function trainState(tr,t){
+  if (t<tr.start||t>tr.end) return null;
+  const S=tr.stops;
+  for (let k=0;k<S.length;k++){
+    const s=S[k];
+    if (t<s.arr){ const a=S[k-1]; return {mode:'run',from:a,to:s,k,u:(t-a.dep)/(s.arr-a.dep)}; }
+    if (t<=s.dep) return {mode:k===0?'wait':k===S.length-1?'arrived':'dwell',at:s,k};
+  }
+  return null;
+}
+function trainPos(tr,st){
+  if (st.mode!=='run') return {s:STS[st.at.st], v:0};
+  const sa=STS[st.from.st], sb=STS[st.to.st], dur=(st.to.arr-st.from.dep)/60;
+  const km=Math.abs(sb-sa)*KMU, avg=km/dur, a=Math.min(.42,Math.max(.1,1-avg/285));
+  return {s:sa+(sb-sa)*prof(st.u,a), v:avg*vprof(st.u,a)};
+}
+
+/* ── clock / simulation state ─────────────────────────────── */
+const state={mode:'live', day:0, min:480, speed:60, playing:true, simDate:null, liveDate:null, sel:null, st:6, tab:'run', ttDir:'S', ttOnly:true, ttQ:'', region:'all'};
+const tpFmt=new Intl.DateTimeFormat('en-US',{timeZone:'Asia/Taipei',year:'numeric',month:'2-digit',day:'2-digit',weekday:'short',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'});
+const WD={Mon:0,Tue:1,Wed:2,Thu:3,Fri:4,Sat:5,Sun:6};
+function taipeiNow(){
+  const now=new Date(), p={}; for(const x of tpFmt.formatToParts(now)) p[x.type]=x.value;
+  const h=+p.hour%24, sec=h*3600+(+p.minute)*60+(+p.second)+now.getMilliseconds()/1000;
+  return {y:+p.year,mo:+p.month,d:+p.day,wd:WD[p.weekday],h,sec};
+}
+let TODAY_WD=0;
+function syncLive(){
+  const n=taipeiNow(); TODAY_WD=n.wd;
+  // service day runs until 02:00 so trains past midnight stay on the previous day's timetable
+  const late=n.h<2, day=late?(n.wd+6)%7:n.wd, min=n.sec/60+(late?1440:0);
+  if (day!==state.day){ state.day=day; onDayChange(); }
+  state.min=min; state.liveDate=n; state.late=late;
+}
+function enterSim(play=true){
+  if (state.mode==='sim') return;
+  state.mode='sim'; state.playing=play; syncControls();
+}
+function goLive(){ state.mode='live'; state.simDate=null; $('datePick').value=''; syncLive(); onDayChange(); syncControls(); }
+function setDay(d,date=null){ enterSim(); state.day=d; state.simDate=date; if(!date) $('datePick').value=''; onDayChange(); syncControls(); }
+function jumpTo(min){ enterSim(); state.min=min; syncControls(); }
+
+/* ── map ─────────────────────────────── */
+const svg=$('map');
+const W=MAP.w, H=MAP.h;
+let vb={x:0,y:0,w:W,h:H};
+const sea=$('sea'); sea.setAttribute('x',-W); sea.setAttribute('y',-H); sea.setAttribute('width',W*3); sea.setAttribute('height',H*3);
+$('land').innerHTML=MAP.counties.map(c=>`<path d="${c.d}"><title>${c.name}</title></path>`).join('');
+const trackD='M'+PX.map((x,i)=>x.toFixed(1)+','+PY[i].toFixed(1)).join('L');
+$('track').setAttribute('d',trackD); $('trackCasing').setAttribute('d',trackD);
+const tropicY=(LAT0-23.4365)*K; $('tropic').setAttribute('d',`M-${W} ${tropicY}H${W*2}`);
+
+const fixed=[]; // elements kept at constant screen size: {el,x,y}
+function addFixed(el,x,y,parent){ (parent||$('fixedLabels')).appendChild(el); fixed.push({el,x,y}); return el; }
+function svgEl(tag,attrs,html){ const e=document.createElementNS(SVGNS,tag); for(const k in attrs) e.setAttribute(k,attrs[k]); if(html!=null) e.innerHTML=html; return e; }
+[['臺灣海峽',24.35,119.85,''],['太平洋',22.95,121.78,''],['北回歸線 23.5°N',23.4365,121.13,'small'],['澎湖',23.42,119.52,'small']].forEach(([txt,lat,lon,cls])=>{
+  const [x,y]=proj(lat,lon); const g=svgEl('g',{});
+  g.appendChild(svgEl('text',{class:'sea-label '+cls,'text-anchor':'middle',y:cls?-5:0},txt)); addFixed(g,x,y);
+});
+const stEls=ST.map(s=>{
+  const [x,y]=[at(STS[s.i]).x,at(STS[s.i]).y]; const [lx,ly,anc]=LBL[s.i]||[-14,1,'end'];
+  const g=svgEl('g',{class:'st','data-st':s.i,role:'button','aria-label':s.zh+'站'});
+  g.innerHTML=`<circle class="hit" r="13"/><circle class="dot" r="5"/><text class="zh" x="${lx}" y="${ly}" text-anchor="${anc}">${s.zh}</text><text class="en" x="${lx}" y="${ly+11}" text-anchor="${anc}">${s.en}</text>`;
+  addFixed(g,x,y,$('stations')); return g;
+});
+
+let pxPerUnit=1, mapRect={width:1,height:1};
+function measure(){ mapRect=svg.getBoundingClientRect(); applyVB(); }
+function applyVB(){
+  svg.setAttribute('viewBox',`${vb.x} ${vb.y} ${vb.w} ${vb.h}`);
+  pxPerUnit=Math.min(mapRect.width/vb.w, mapRect.height/vb.h)||1;
+  const k=1/pxPerUnit;
+  for (const f of fixed) f.el.setAttribute('transform',`translate(${f.x} ${f.y}) scale(${k})`);
+  // scale bar
+  const pxPerKm=pxPerUnit/KM_PER_UNIT_GEO; let km=[5,10,20,50,100,200].find(v=>v*pxPerKm>=55)||200;
+  $('scaleBar').style.width=(km*pxPerKm).toFixed(0)+'px'; $('scaleTxt').textContent=km+' km';
+}
+new ResizeObserver(measure).observe(svg);
+
+function fitBox(b){ // expand bbox to the container aspect
+  const ar=mapRect.width/mapRect.height||0.7; let {x,y,w,h}=b;
+  if (w/h<ar){ const nw=h*ar; x-=(nw-w)/2; w=nw; } else { const nh=w/ar; y-=(nh-h)/2; h=nh; }
+  return {x,y,w,h};
+}
+function stationBox(a,b,pad){ const xs=[],ys=[]; for(let i=a;i<=b;i++){ const p=at(STS[i]); xs.push(p.x); ys.push(p.y); }
+  const x0=Math.min(...xs),x1=Math.max(...xs),y0=Math.min(...ys),y1=Math.max(...ys); const px=Math.max(80,(x1-x0)*pad), py=Math.max(80,(y1-y0)*pad);
+  return {x:x0-px*1.6,y:y0-py,w:x1-x0+px*3.2,h:y1-y0+py*2}; }
+const REGIONS={ all:()=>({x:0,y:0,w:W,h:H}), line:()=>stationBox(0,11,.06), north:()=>stationBox(0,4,.18), mid:()=>stationBox(5,8,.14), south:()=>stationBox(8,11,.12) };
+const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
+let fly=null;
+function flyTo(target){
+  target=fitBox(target);
+  if (reduced){ vb=target; applyVB(); return; }
+  fly={from:{...vb},to:target,t0:performance.now(),dur:520};
+}
+function stepFly(now){
+  if(!fly) return; let u=Math.min(1,(now-fly.t0)/fly.dur); u=u<.5?4*u*u*u:1-Math.pow(-2*u+2,3)/2;
+  for(const k of ['x','y','w','h']) vb[k]=fly.from[k]+(fly.to[k]-fly.from[k])*u;
+  applyVB(); if(u>=1) fly=null;
+}
+function setRegion(r){ state.region=r; document.querySelectorAll('.regions button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.r===r)); flyTo(REGIONS[r]()); }
+function clientToSvg(cx,cy){ const r=mapRect; const s=pxPerUnit; const ox=(r.width-vb.w*s)/2, oy=(r.height-vb.h*s)/2; return [vb.x+(cx-r.left-ox)/s, vb.y+(cy-r.top-oy)/s]; }
+function zoomAt(factor,cx,cy){
+  const nw=Math.min(W*1.4,Math.max(W/45,vb.w/factor)); factor=vb.w/nw;
+  const [px,py]=clientToSvg(cx,cy);
+  vb={x:px-(px-vb.x)/factor, y:py-(py-vb.y)/factor, w:vb.w/factor, h:vb.h/factor};
+  fly=null; clearRegion(); applyVB();
+}
+function clearRegion(){ document.querySelectorAll('.regions button').forEach(b=>b.setAttribute('aria-pressed','false')); }
+svg.addEventListener('wheel',e=>{ e.preventDefault(); zoomAt(Math.exp(-e.deltaY*0.0016),e.clientX,e.clientY); },{passive:false});
+const ptrs=new Map(); let drag=null;
+svg.addEventListener('pointerdown',e=>{
+  svg.setPointerCapture(e.pointerId); ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  drag={x:e.clientX,y:e.clientY,vb:{...vb},moved:false,pinch:null};
+  if (ptrs.size===2){ const [a,b]=[...ptrs.values()]; drag.pinch={d:Math.hypot(a.x-b.x,a.y-b.y)}; drag.moved=true; }
+});
+svg.addEventListener('pointermove',e=>{
+  if(!drag||!ptrs.has(e.pointerId)) return;
+  const prev=ptrs.get(e.pointerId); ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  if (ptrs.size===2 && drag.pinch){ const [a,b]=[...ptrs.values()]; const d=Math.hypot(a.x-b.x,a.y-b.y); zoomAt(d/drag.pinch.d,(a.x+b.x)/2,(a.y+b.y)/2); drag.pinch.d=d; return; }
+  const dx=e.clientX-drag.x, dy=e.clientY-drag.y;
+  if (!drag.moved && Math.hypot(dx,dy)>5){ drag.moved=true; svg.classList.add('dragging'); fly=null; clearRegion(); }
+  if (drag.moved){ vb.x-= (e.clientX-prev.x)/pxPerUnit; vb.y-=(e.clientY-prev.y)/pxPerUnit; applyVB(); }
+});
+function endPtr(e){
+  if(!ptrs.has(e.pointerId)) return; ptrs.delete(e.pointerId);
+  if (drag && !drag.moved && e.type==='pointerup'){
+    const hit=document.elementFromPoint(e.clientX,e.clientY);
+    const t=hit&&hit.closest('[data-no]'), s=hit&&hit.closest('[data-st]');
+    if (t) selectTrain(t.dataset.no); else if (s) selectStation(+s.dataset.st,true);
+  }
+  if (!ptrs.size){ drag=null; svg.classList.remove('dragging'); }
+}
+svg.addEventListener('pointerup',endPtr); svg.addEventListener('pointercancel',endPtr);
+$('zIn').onclick=()=>{ const r=mapRect; zoomAt(1.6,r.left+r.width/2,r.top+r.height/2); };
+$('zOut').onclick=()=>{ const r=mapRect; zoomAt(1/1.6,r.left+r.width/2,r.top+r.height/2); };
+document.querySelectorAll('.regions button').forEach(b=>b.onclick=()=>setRegion(b.dataset.r));
+
+/* trains on the map */
+const trainEls=new Map(); let ACTIVE=[];
+const BODY='M-14,-4H6C10,-4 13,-2.4 15.5,0C13,2.4 10,4 6,4H-14Q-15.5,4 -15.5,2.5V-2.5Q-15.5,-4 -14,-4Z';
+function makeTrainEl(tr){
+  const g=svgEl('g',{class:'trn '+tr.dir,'data-no':tr.no,role:'button','aria-label':`車次 ${tr.no}`});
+  g.innerHTML=`<circle class="ring" r="11"/><circle class="hit" r="15"/><path class="body" d="${BODY}"/><path class="stripe" d="M-13,1.7H7C10,1.7 12,1.1 14.2,0"/><path class="glass" d="M8.5,-2.6C10.5,-2.3 12,-1.6 13,-.7L8.5,-.7Z"/>`;
+  const lab=svgEl('text',{class:'tlabel '+tr.dir},tr.no);
+  $('trains').appendChild(g); $('trainLabels').appendChild(lab);
+  return {g,lab};
+}
+function computeActive(){
+  const t=state.min, list=[];
+  for (const tr of DAYTRAINS[state.day]){ if(t<tr.start||t>tr.end) continue; const st=trainState(tr,t); if(!st) continue; list.push({tr,st,pos:trainPos(tr,st)}); }
+  return list;
+}
+function drawTrains(){
+  ACTIVE=computeActive();
+  // markers grow a little as the map zooms in; at whole-island scale they stay compact
+  const k=1/pxPerUnit, size=pxPerUnit<0.17?0.56:pxPerUnit<0.3?0.68:pxPerUnit<0.6?0.85:1.05, showLabels=pxPerUnit>0.62, seen=new Set();
+  for (const a of ACTIVE){
+    const {tr,st,pos}=a; let el=trainEls.get(tr.no); if(!el){ el=makeTrainEl(tr); trainEls.set(tr.no,el); }
+    seen.add(tr.no);
+    const p=at(pos.s), hx=tr.dir==='S'?p.tx:-p.tx, hy=tr.dir==='S'?p.ty:-p.ty; // heading
+    const off=(3+4.5*size)*k, x=p.x+hy*off, y=p.y-hx*off, ang=Math.atan2(hy,hx)*180/Math.PI;
+    const sel=state.sel===tr.no;
+    el.g.setAttribute('transform',`translate(${x.toFixed(1)} ${y.toFixed(1)}) rotate(${ang.toFixed(1)}) scale(${(k*size*(sel?1.35:1)).toFixed(4)})`);
+    el.g.classList.toggle('sel',sel); el.g.classList.toggle('dwell',st.mode!=='run');
+    const lx=p.x+hy*off*3.3, ly=p.y-hx*off*3.3;
+    el.lab.setAttribute('transform',`translate(${lx.toFixed(1)} ${(ly+4*k).toFixed(1)}) scale(${k.toFixed(4)})`);
+    el.lab.setAttribute('text-anchor', Math.abs(hy)<.35?'middle':(hy>0?'start':'end'));
+    el.lab.style.display=(showLabels||sel)?'':'none';
+  }
+  for (const [no,el] of trainEls) if(!seen.has(no)){ el.g.remove(); el.lab.remove(); trainEls.delete(no); }
+  // selected train drawn last
+  if (state.sel && trainEls.has(state.sel)){ const el=trainEls.get(state.sel); if (el.g.nextSibling) $('trains').appendChild(el.g); }
+}
+
+/* ── header controls ─────────────────────────────── */
+$('dayBtns').innerHTML=DAY.map((d,i)=>`<button data-d="${i}" aria-pressed="false" title="週${d}班表：${DAYTRAINS[i].length} 班"><b>${d}</b><span>${DAYTRAINS[i].length}</span></button>`).join('');
+$('dayBtns').querySelectorAll('button').forEach(b=>b.onclick=()=>setDay(+b.dataset.d));
+$('datePick').onchange=e=>{ const v=e.target.value; if(!v) return; const [y,m,d]=v.split('-').map(Number); const wd=(new Date(Date.UTC(y,m-1,d)).getUTCDay()+6)%7; setDay(wd,{y,mo:m,d}); };
+$('liveBtn').onclick=goLive;
+$('playBtn').onclick=()=>{ if(state.mode==='live'){ enterSim(false); } else state.playing=!state.playing; syncControls(); };
+$('speedSel').onchange=e=>{ state.speed=+e.target.value; if(state.mode==='live') enterSim(true); else state.playing=true; syncControls(); };
+$('slider').oninput=e=>{ enterSim(state.mode==='sim'?state.playing:false); state.min=+e.target.value; };
+document.addEventListener('click',e=>{ const j=e.target.closest('[data-jump]'); if(j) jumpTo(+j.dataset.jump); });
+function syncControls(){
+  const live=state.mode==='live';
+  $('liveBtn').setAttribute('aria-pressed',live);
+  const playing=live||state.playing;
+  $('playBtn').textContent=playing?'❚❚':'▶'; $('playBtn').setAttribute('aria-label',playing?'暫停':'播放');
+  const pill=$('modePill'); pill.className='pill '+(live?'live':'sim'); pill.lastElementChild.textContent=live?'即時':(state.playing?`模擬 ${state.speed}×`:'模擬 · 暫停');
+  $('dayBtns').querySelectorAll('button').forEach(b=>{ b.setAttribute('aria-pressed',+b.dataset.d===state.day); b.classList.toggle('today',+b.dataset.d===TODAY_WD); });
+}
+function drawClock(){
+  let secs; if(state.mode==='live') secs=state.liveDate.sec; else secs=state.min*60;
+  secs=((secs%86400)+86400)%86400;
+  const txt=[Math.floor(secs/3600),Math.floor(secs/60)%60,Math.floor(secs)%60].map(v=>String(v).padStart(2,'0')).join(':');
+  if ($('clock').textContent!==txt) $('clock').textContent=txt;
+  let when;
+  if (state.mode==='live'){ const n=state.liveDate; when=`${n.y}/${n.mo}/${n.d}（${DAY[n.wd]}）`+(state.late?` · 週${DAY[state.day]}班表延續`:''); }
+  else if (state.simDate){ const s=state.simDate; when=`${s.y}/${s.mo}/${s.d}（${DAY[state.day]}）· 週${DAY[state.day]}班表`; }
+  else when=`週${DAY[state.day]}班表`;
+  if ($('whenText').textContent!==when) $('whenText').textContent=when;
+  const sl=$('slider'); if (document.activeElement!==sl || state.mode==='live') sl.value=Math.max(300,Math.min(1500,state.min));
+  const o=fmt(Math.floor(state.min)); if($('sliderOut').textContent!==o) $('sliderOut').textContent=o;
+}
+
+/* ── summary card ─────────────────────────────── */
+function renderSummary(){
+  const d=state.day, list=DAYTRAINS[d], max=Math.max(...DAYTRAINS.map(l=>l.length));
+  $('sumTitle').textContent=`週${DAY[d]}運行概況`;
+  $('kTotal').textContent=list.length; $('kS').textContent=list.filter(t=>t.dir==='S').length; $('kN').textContent=list.filter(t=>t.dir==='N').length;
+  $('week').innerHTML=DAYTRAINS.map((l,i)=>{ const x=l.length-DAILY_N; return `<button class="wk" data-d="${i}" aria-pressed="${i===d}" aria-label="週${DAY[i]} ${l.length} 班">
+    <span class="cnt">${l.length}</span><span class="bar" style="height:${(l.length/max*76).toFixed(1)}px"><i class="x" style="height:${(x/l.length*100).toFixed(1)}%"></i><i class="b" style="flex:1"></i></span><span class="lab">${DAY[i]}</span></button>`; }).join('');
+  $('week').querySelectorAll('.wk').forEach(b=>b.onclick=()=>setDay(+b.dataset.d));
+  const extra=list.length-DAILY_N, peak=DAYTRAINS.map((l,i)=>[l.length,i]).sort((a,b)=>b[0]-a[0]);
+  const low=peak[6][0], lowDays=DAYTRAINS.map((l,i)=>l.length===low?DAY[i]:'').join('');
+  $('sumNote').innerHTML=`每日固定行駛 <b>${DAILY_N}</b> 班；週${DAY[d]}另有 <b>${extra}</b> 班僅於指定星期行駛的車次。班次最多為週${DAY[peak[0][1]]}（${peak[0][0]} 班）與週${DAY[peak[1][1]]}（${peak[1][0]} 班），最少為週${lowDays.split('').join('、')}（各 ${low} 班）。`;
+}
+
+/* ── tabs ─────────────────────────────── */
+document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>setTab(b.dataset.tab));
+function setTab(t){ state.tab=t; document.querySelectorAll('.tabs button').forEach(b=>b.setAttribute('aria-selected',b.dataset.tab===t)); ['run','board','tt'].forEach(k=>$('pane-'+k).hidden=k!==t); renderPanels(true); }
+
+/* running list */
+let runKey='';
+function statusText(tr,st){
+  if (!st) return '';
+  if (st.mode==='wait') return `${ST[tr.from].zh} 待發`;
+  if (st.mode==='dwell') return `停靠 ${ST[st.at.st].zh}`;
+  if (st.mode==='arrived') return `已抵達 ${ST[tr.to].zh}`;
+  return `${ST[st.from.st].zh} → ${ST[st.to.st].zh}`;
+}
+function nextStop(tr,st){
+  if (st.mode==='wait') return [ST[tr.from].zh+' 開', st.at.time];
+  if (st.mode==='dwell') return [ST[st.at.st].zh+' 開', st.at.time];
+  if (st.mode==='arrived') return ['抵達', st.at.time];
+  return ['下一站 '+ST[st.to.st].zh, st.to.time];
+}
+const progress=(tr,t)=>Math.max(0,Math.min(1,(t-tr.first)/(tr.last-tr.first)));
+function renderRunning(){
+  const pane=$('pane-run'); const list=[...ACTIVE].sort((a,b)=>a.tr.dir===b.tr.dir? a.tr.first-b.tr.first : a.tr.dir==='S'?-1:1);
+  const nS=list.filter(a=>a.tr.dir==='S').length;
+  const key=state.day+'|'+state.sel+'|'+list.map(a=>a.tr.no+statusText(a.tr,a.st)).join(',');
+  if (key!==runKey){
+    runKey=key;
+    if (!list.length){ pane.innerHTML=`<div class="empty">此刻沒有列車運行（週${DAY[state.day]} ${fmt(state.min)}）。<button class="btn" data-jump="480">看 08:00 尖峰</button></div>`; }
+    else pane.innerHTML=`<div class="subhead"><span>南下 <b>${nS}</b> · 北上 <b>${list.length-nS}</b></span><span>依起站發車時間排序</span></div><ul class="runlist">`+list.map(({tr,st})=>{
+      const [nl,nt]=nextStop(tr,st);
+      return `<li><button class="runrow ${tr.dir}${state.sel===tr.no?' sel':''}" data-pick="${tr.no}"><span class="tno ${tr.dir}">${tr.no}</span><span class="rm"><b>${ST[tr.from].zh} → ${ST[tr.to].zh}</b><small>${statusText(tr,st)} · ${typeLabel(tr)}${tr.daily?'':' · 指定日'}</small></span><span class="rn"><small>${nl}</small><b>${fmt(nt)}</b></span><span class="pg"><i data-pg="${tr.no}"></i></span></button></li>`;
+    }).join('')+'</ul>';
+  }
+  pane.querySelectorAll('[data-pg]').forEach(i=>{ const tr=BYNO.get(i.dataset.pg); i.style.width=(progress(tr,state.min)*100).toFixed(1)+'%'; });
+}
+document.addEventListener('click',e=>{ const p=e.target.closest('[data-pick]'); if(p) selectTrain(p.dataset.pick); });
+
+/* station board */
+$('stChips').innerHTML=ST.map(s=>`<button data-st="${s.i}" aria-pressed="false">${s.zh}</button>`).join('');
+$('stChips').querySelectorAll('button').forEach(b=>b.onclick=()=>selectStation(+b.dataset.st,false));
+let boardKey='';
+function renderBoard(){
+  const i=state.st, t=state.min, d=state.day;
+  $('stChips').querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed',+b.dataset.st===i));
+  const deps=dir=>DAYTRAINS[d].filter(tr=>tr.dir===dir && tr.to!==i && tr.stopAt.has(i) && tr.stopAt.get(i).time>=t-0.5)
+      .sort((a,b)=>a.stopAt.get(i).time-b.stopAt.get(i).time).slice(0,6);
+  const row=tr=>{ const s=tr.stopAt.get(i), dt=s.time-t; let note, hot=false;
+    if (t>=s.arr && t<=s.dep){ note=tr.from===i?'待發':'停靠中'; hot=true; } else if (dt<=5){ note=`${Math.max(1,Math.ceil(dt))} 分後`; hot=true; } else note=`${Math.ceil(dt)} 分後`;
+    return `<div class="brow" data-pick="${tr.no}" style="cursor:pointer"><span class="bt">${fmt(s.time)}</span><span class="bn">${tr.no}</span><span class="bd">往 ${ST[tr.to].zh}<small>${typeLabel(tr)}</small></span><span class="bs${hot?' hot':''}">${note}</span></div>`; };
+  const blk=(dir,label)=>{ if ((dir==='S'&&i===11)||(dir==='N'&&i===0)) return ''; const l=deps(dir);
+    return `<div class="bdir"><h4><span>${label}</span><span>時刻 · 車次 · 終點</span></h4>${l.length?l.map(row).join(''):`<div class="bnone">本日${label}班次已結束</div>`}</div>`; };
+  const html=`<div class="board-head"><div><b>${ST[i].zh}</b><span>${ST[i].en}</span></div><time>${fmt(t)}</time></div>${blk('S','南下 往左營')}${blk('N','北上 往南港')}<div class="board-foot">週${DAY[d]}班表 · 依時刻表推算，非即時誤點資訊</div>`;
+  if (html!==boardKey){ boardKey=html; $('board').innerHTML=html; }
+}
+function selectStation(i,fromMap){
+  state.st=i; stEls.forEach((g,k)=>g.classList.toggle('sel',k===i));
+  if (fromMap) setTab('board'); else renderBoard();
+}
+
+/* timetable */
+$('ttDir').querySelectorAll('button').forEach(b=>b.onclick=()=>{ state.ttDir=b.dataset.d; $('ttDir').querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed',x===b)); renderTimetable(); });
+$('ttOnly').onchange=e=>{ state.ttOnly=e.target.checked; renderTimetable(); };
+$('ttQ').oninput=e=>{ state.ttQ=e.target.value.trim(); renderTimetable(); };
+function renderTimetable(){
+  const dir=state.ttDir, d=state.day, order=dir==='S'?[...Array(12).keys()]:[...Array(12).keys()].reverse();
+  const rows=TRAINS.filter(tr=>tr.dir===dir && (!state.ttOnly||tr.days[d]) && (!state.ttQ||tr.no.includes(state.ttQ))).sort((a,b)=>a.first-b.first);
+  const dd=tr=>`<span class="dd mini" title="${daysLabel(tr)}">${tr.days.map((v,k)=>`<i class="${v?'on':''}${k===d?' cur':''}"></i>`).join('')}</span>`;
+  const passSet=tr=>new Set(tr.route.filter(r=>r.pass).map(r=>r.st));
+  $('tt').innerHTML=`<thead><tr><th>車次</th><th>行駛日</th>${order.map(i=>`<th>${ST[i].zh}</th>`).join('')}</tr></thead><tbody>`+
+    rows.map(tr=>{ const ps=passSet(tr); return `<tr data-row="${tr.no}" data-pick="${tr.no}"${tr.days[d]?'':' class="off"'}><td class="no">${tr.no}</td><td>${dd(tr)}</td>${order.map(i=>{ const s=tr.stopAt.get(i); return `<td>${s?fmt(s.time):ps.has(i)?'<span class="ps">↓</span>':''}</td>`; }).join('')}</tr>`; }).join('')+'</tbody>';
+  $('ttCount').textContent=`${dir==='S'?'南下':'北上'} ${rows.length} 班${state.ttOnly?`（週${DAY[d]}行駛）`:'（全部車次，淡色為本日不行駛）'} · 「↓」為通過不停`;
+  updateTtStatus();
+}
+function updateTtStatus(){
+  const run=new Set(ACTIVE.map(a=>a.tr.no)), t=state.min, d=state.day;
+  $('tt').querySelectorAll('tr[data-row]').forEach(r=>{ const tr=BYNO.get(r.dataset.row); const on=tr.days[d];
+    r.className=(on?'':'off')+(on&&run.has(tr.no)?' run':'')+(on&&t>tr.end?' gone':'')+(state.sel===tr.no?' sel':''); });
+}
+
+/* ── selected train detail ─────────────────────────────── */
+const ART=`<svg class="train-art" viewBox="0 0 420 66" role="img" aria-label="N700ST 列車側視圖">
+  <path d="M0 61H420" stroke="var(--rule)" stroke-width="2"/>
+  <g fill="var(--train-black)"><rect x="150" y="50" width="56" height="7" rx="2"/><rect x="318" y="50" width="56" height="7" rx="2"/></g>
+  <g fill="var(--muted)"><circle cx="162" cy="57" r="4"/><circle cx="194" cy="57" r="4"/><circle cx="330" cy="57" r="4"/><circle cx="362" cy="57" r="4"/></g>
+  <path d="M398 13H128C88 13 56 22 30 34C14 41 4 46 4 49.5C4 52 9 53 20 53H398Z" fill="var(--train-white)" stroke="var(--coast)" stroke-width="1.2"/>
+  <path d="M402 13H420V53H402Z" fill="var(--train-white)" stroke="var(--coast)" stroke-width="1.2"/>
+  <path d="M60 25C80 19 104 17 124 17V27L66 29Z" fill="var(--train-glass)"/>
+  <g fill="var(--train-glass)">${Array.from({length:13},(_,i)=>`<rect x="${142+i*19}" y="22" width="13" height="8" rx="2"/>`).join('')}<rect x="405" y="22" width="13" height="8" rx="2"/></g>
+  <rect x="384" y="19" width="10" height="30" rx="1.5" fill="none" stroke="var(--coast)"/>
+  <path d="M8 48C40 41 80 37 132 37H398M402 37H420" fill="none" stroke="var(--train-orange)" stroke-width="3.2"/>
+  <path d="M12 50.5C46 45 86 42.5 132 42.5H398M402 42.5H420" fill="none" stroke="var(--train-black)" stroke-width="2.2"/>
+</svg>`;
+let detailKey='';
+function renderDetail(){
+  const box=$('detail'); const tr=state.sel&&BYNO.get(state.sel);
+  if (!tr){ box.hidden=true; detailKey=''; return; }
+  box.hidden=false;
+  const t=state.min, runs=!!tr.days[state.day], st=runs?trainState(tr,t):null, pos=st?trainPos(tr,st):null;
+  const phase=!runs?'off':st?st.mode:(t<tr.start?'before':'after');
+  let status;
+  if (phase==='off') status=`<span>週${DAY[state.day]}不行駛</span><span>${daysLabel(tr)}</span>`;
+  else if (phase==='before') status=`<span>尚未發車</span><span>${ST[tr.from].zh} <b class="num">${fmt(tr.first)}</b> 開</span>`;
+  else if (phase==='after') status=`<span>已抵達 ${ST[tr.to].zh}</span><span><b class="num">${fmt(tr.last)}</b> 到</span>`;
+  else { const [nl,nt]=nextStop(tr,st); status=`<b>${statusText(tr,st)}</b><span>${nl} <b class="num">${fmt(nt)}</b></span><span class="spd"><span id="dSpd">${Math.round(pos.v)}</span><small>km/h 估</small></span>`; }
+  // which stations has the train already passed?
+  const sNow=pos?pos.s:(phase==='after'?Infinity:-Infinity), dirS=tr.dir==='S';
+  const passed=i=> phase==='after' ? true : !pos ? false : dirS ? STS[i]<sNow-0.5 : STS[i]>sNow+0.5;
+  const items=tr.route.map(r=>{
+    const here=st&&st.mode!=='run'&&st.at.st===r.st, nxt=st&&st.mode==='run'&&st.to.st===r.st;
+    const cls=[r.pass?'pass':'', here?'now':nxt?'next':(passed(r.st)?'done':'')].join(' ');
+    const tag=r.pass?'通過':here?(st.mode==='wait'?'待發':st.mode==='arrived'?'已抵達':'停靠中'):nxt?'下一站':(r.st===tr.from?'始發':r.st===tr.to?'終點':'');
+    return `<li class="${cls}"><span class="t">${r.pass?'—':fmt(r.time)}</span><span class="pin"><i></i></span><span>${ST[r.st].zh}</span><span class="tag">${tag}</span></li>`;
+  }).join('');
+  const html=`<div class="detail-head"><span class="tno ${tr.dir}">${tr.no}</span><div class="grow"><h3>${ST[tr.from].zh} → ${ST[tr.to].zh}</h3><p>${tr.dir==='S'?'南下':'北上'} · ${typeLabel(tr)} · ${fmt(tr.first)}–${fmt(tr.last)} · 行車 ${Math.round(tr.last-tr.first)} 分</p></div>
+    <div class="detail-actions">${pos?'<button class="btn" id="dLocate">定位</button>':''}<button class="btn icon" id="dClose" aria-label="關閉">✕</button></div></div>
+    ${ART}
+    <div class="status">${status}</div>
+    <div class="dayrow"><span>行駛日</span><span class="dd">${tr.days.map((v,k)=>`<i class="${v?'on':''}${k===state.day?' cur':''}">${DAY[k]}</i>`).join('')}</span><span>${tr.daily?'每日':'指定星期'}</span></div>
+    <ol class="stops">${items}</ol>
+    <p class="fleet">N700ST 為台灣高鐵新世代列車，以日本 N700S 為基礎，由日立東芝聯盟製造，共購置 12 組。首組 2026 年 7 月出廠，預計 2027 年 7 月 1 日投入營運；本系統以 N700ST 呈現所有車次。</p>`;
+  const key=html.replace(/<span id="dSpd">\d+<\/span>/,'');
+  if (key!==detailKey){ detailKey=key; box.innerHTML=html;
+    $('dClose').onclick=()=>selectTrain(null);
+    const loc=$('dLocate'); if(loc) loc.onclick=()=>{ const a=ACTIVE.find(x=>x.tr.no===tr.no); if(!a) return; const p=at(a.pos.s); const w=Math.min(vb.w,700); flyTo({x:p.x-w/2,y:p.y-w/2,w,h:w}); clearRegion(); };
+  } else if (pos){ const sp=$('dSpd'); if(sp) sp.textContent=Math.round(pos.v); }
+}
+function selectTrain(no){
+  state.sel=no; runKey=''; renderPanels(true); drawTrains(); updateTtStatus();
+  if (no && innerWidth<=960) $('detail').scrollIntoView({behavior:reduced?'auto':'smooth',block:'start'});
+}
+
+/* ── panels ─────────────────────────────── */
+function renderPanels(){
+  const nS=ACTIVE.filter(a=>a.tr.dir==='S').length;
+  $('lgS').textContent=nS; $('lgN').textContent=ACTIVE.length-nS; $('kRun').textContent=ACTIVE.length; $('tabRunN').textContent=ACTIVE.length;
+  const off=!ACTIVE.length; $('offhours').hidden=!off;
+  if (off) $('offText').textContent = state.min<600 ? `首班車約 05:50 發車（週${DAY[state.day]}）。` : `末班車已於約 00:05 抵達（週${DAY[state.day]}班表）。`;
+  renderDetail();
+  if (state.tab==='run') renderRunning(); else if (state.tab==='board') renderBoard(); else updateTtStatus();
+}
+function onDayChange(){ runKey=''; boardKey=''; detailKey=''; renderSummary(); renderTimetable(); syncControls(); }
+
+/* ── boot ─────────────────────────────── */
+syncLive(); measure(); onDayChange(); selectStation(6,false); setTab('run');
+// narrow screens: the whole island renders small, so open on the line itself
+if (Math.min(mapRect.width/W, mapRect.height/H) < 0.17){ vb=fitBox(REGIONS.line()); applyVB(); state.region='line';
+  document.querySelectorAll('.regions button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.r==='line')); }
+let last=performance.now(), lastPanel=0;
+function frame(now){
+  const dt=Math.min(1,(now-last)/1000); last=now;
+  if (state.mode==='live') syncLive();
+  else if (state.playing){
+    state.min+=dt*state.speed/60;
+    if (state.min>1500){ state.min=300; state.day=(state.day+1)%7;
+      if (state.simDate){ const n=new Date(Date.UTC(state.simDate.y,state.simDate.mo-1,state.simDate.d+1)); state.simDate={y:n.getUTCFullYear(),mo:n.getUTCMonth()+1,d:n.getUTCDate()}; }
+      onDayChange(); }
+  }
+  stepFly(now); drawTrains(); drawClock();
+  if (now-lastPanel>400){ lastPanel=now; renderPanels(); }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+})();
+</script>
