@@ -207,8 +207,12 @@ main{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) minmax
 .stops li.done .pin::before{background:var(--muted)}
 .stops li.now .pin i{background:var(--accent);border-color:var(--accent);box-shadow:0 0 0 4px var(--accent-soft)}
 .stops li.now{font-weight:700}
-.stops .tag{font-size:11.5px;color:var(--muted)}
-.stops li.now .tag,.stops li.next .tag{color:var(--accent);font-weight:700}
+.stops .nm{display:flex;align-items:center;gap:6px;min-width:0}
+.stops .chip{font-style:normal;font-size:11px;font-weight:500;line-height:1;padding:3px 6px;border-radius:5px;background:var(--surface-2);color:var(--muted);white-space:nowrap}
+.stops .chip.nx{background:var(--accent-soft);color:var(--accent);font-weight:700}
+.stops .stt{font-size:12px;color:var(--ink);white-space:nowrap}
+.stops li.done .stt{color:var(--muted)}
+.stops li.now .stt,.stops li.next .stt{color:var(--accent);font-weight:700}
 .stops li.next .pin i{border-color:var(--accent)}
 .fleet{margin:12px 0 0;font-size:12px;color:var(--muted);line-height:1.6;border-top:1px solid var(--rule);padding-top:10px}
 
@@ -815,8 +819,8 @@ function renderTimetable(){
   const dd=tr=>`<span class="dd mini" title="${daysLabel(tr)}">${tr.days.map((v,k)=>`<i class="${v?'on':''}${k===d?' cur':''}"></i>`).join('')}</span>`;
   const passSet=tr=>new Set(tr.route.filter(r=>r.pass).map(r=>r.st));
   $('tt').innerHTML=`<thead><tr><th>車次</th><th>行駛日</th>${order.map(i=>`<th>${ST[i].zh}</th>`).join('')}</tr></thead><tbody>`+
-    rows.map(tr=>{ const ps=passSet(tr); return `<tr data-row="${tr.no}" data-pick="${tr.no}"${tr.days[d]?'':' class="off"'}><td class="no">${tr.no}</td><td>${dd(tr)}</td>${order.map(i=>{ const s=tr.stopAt.get(i); return `<td>${s?fmt(s.time):ps.has(i)?'<span class="ps">↓</span>':''}</td>`; }).join('')}</tr>`; }).join('')+'</tbody>';
-  $('ttCount').textContent=`${dir==='S'?'南下':'北上'} ${rows.length} 班${state.ttOnly?`（週${DAY[d]}行駛）`:'（全部車次，淡色為本日不行駛）'} · 「↓」為通過不停`;
+    rows.map(tr=>{ const ps=passSet(tr); return `<tr data-row="${tr.no}" data-pick="${tr.no}"${tr.days[d]?'':' class="off"'}><td class="no">${tr.no}</td><td>${dd(tr)}</td>${order.map(i=>{ const s=tr.stopAt.get(i); return `<td>${s?fmt(s.time):ps.has(i)?'<span class="ps" title="不停靠">↓</span>':''}</td>`; }).join('')}</tr>`; }).join('')+'</tbody>';
+  $('ttCount').textContent=`${dir==='S'?'南下':'北上'} ${rows.length} 班${state.ttOnly?`（週${DAY[d]}行駛）`:'（全部車次，淡色為本日不行駛）'} · 「↓」為不停靠`;
   updateTtStatus();
 }
 function updateTtStatus(){
@@ -850,14 +854,23 @@ function renderDetail(){
   else if (phase==='before') status=`<span>尚未發車</span><span>${ST[tr.from].zh} <b class="num">${fmt(tr.first)}</b> 開</span>`;
   else if (phase==='after') status=`<span>已抵達 ${ST[tr.to].zh}</span><span><b class="num">${fmt(tr.last)}</b> 到</span>`;
   else { const [nl,nt]=nextStop(tr,st); status=`<b>${statusText(tr,st)}</b><span>${nl} <b class="num">${fmt(nt)}</b></span><span class="spd"><span id="dSpd">${Math.round(pos.v)}</span><small>km/h 估</small></span>`; }
-  // which stations has the train already passed?
-  const sNow=pos?pos.s:(phase==='after'?Infinity:-Infinity), dirS=tr.dir==='S';
-  const passed=i=> phase==='after' ? true : !pos ? false : dirS ? STS[i]<sNow-0.5 : STS[i]>sNow+0.5;
+  // each station relative to the train: done 已通過 / todo 未通過 / next 下一站 / here 停靠中
+  // stops are judged by timetable order; non-stop stations by the train's position
+  const dirS=tr.dir==='S', stopIdx=new Map(tr.stops.map((s,k)=>[s.st,k]));
+  const where=r=>{
+    if (phase==='off') return '';
+    if (phase==='before') return 'todo';
+    if (phase==='after') return 'done';
+    if (!r.pass){ const k=stopIdx.get(r.st); return k<st.k?'done':k>st.k?'todo':st.mode==='run'?'next':'here'; }
+    return (dirS?STS[r.st]>pos.s:STS[r.st]<pos.s)?'todo':'done';
+  };
   const items=tr.route.map(r=>{
-    const here=st&&st.mode!=='run'&&st.at.st===r.st, nxt=st&&st.mode==='run'&&st.to.st===r.st;
-    const cls=[r.pass?'pass':'', here?'now':nxt?'next':(passed(r.st)?'done':'')].join(' ');
-    const tag=r.pass?'通過':here?(st.mode==='wait'?'待發':st.mode==='arrived'?'已抵達':'停靠中'):nxt?'下一站':(r.st===tr.from?'始發':r.st===tr.to?'終點':'');
-    return `<li class="${cls}"><span class="t">${r.pass?'—':fmt(r.time)}</span><span class="pin"><i></i></span><span>${ST[r.st].zh}</span><span class="tag">${tag}</span></li>`;
+    const w=where(r);
+    const stt = w==='here' ? (st.mode==='wait'?'待發':st.mode==='arrived'?'已抵達':'停靠中')
+              : w==='done' ? (r.st===tr.to?'已抵達':'已通過') : w ? '未通過' : '';
+    const chips=(r.st===tr.from?'<em class="chip">始發</em>':'')+(r.st===tr.to?'<em class="chip">終點</em>':'')
+              +(r.pass?'<em class="chip">不停靠</em>':'')+(w==='next'?'<em class="chip nx">下一站</em>':'');
+    return `<li class="${r.pass?'pass ':''}${w==='here'?'now':w}"><span class="t">${r.pass?'—':fmt(r.time)}</span><span class="pin"><i></i></span><span class="nm">${ST[r.st].zh}${chips}</span><span class="stt">${stt}</span></li>`;
   }).join('');
   const html=`<div class="detail-head"><span class="tno ${tr.dir}">${tr.no}</span><div class="grow"><h3>${ST[tr.from].zh} → ${ST[tr.to].zh}</h3><p>${tr.dir==='S'?'南下':'北上'} · ${typeLabel(tr)} · ${fmt(tr.first)}–${fmt(tr.last)} · 行車 ${Math.round(tr.last-tr.first)} 分</p></div>
     <div class="detail-actions">${pos?'<button class="btn" id="dLocate">定位</button>':''}<button class="btn icon" id="dClose" aria-label="關閉">✕</button></div></div>
