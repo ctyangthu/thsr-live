@@ -12,9 +12,27 @@ src = (ROOT / "src" / "app.html").read_text(encoding="utf-8")
 tt = json.loads((ROOT / "data" / "timetable-2026-02-02.json").read_text(encoding="utf-8"))
 geo = json.loads((ROOT / "data" / "map.json").read_text(encoding="utf-8"))
 
+# special periods (data/specials.json): a timetable PDF that replaces the weekly one on its
+# dates, plus extra trains announced separately (tagged, with a note shown in the detail panel)
+specials = []
+for p in json.loads((ROOT / "data" / "specials.json").read_text(encoding="utf-8")):
+    base = json.loads((ROOT / "data" / p["timetable"]).read_text(encoding="utf-8"))
+    trains = list(base["trains"])
+    for ex in p.get("extras", []):
+        for t in json.loads((ROOT / "data" / ex["file"]).read_text(encoding="utf-8"))["trains"]:
+            note = ex["note"] + ("；" + ex["addedStopsNote"] if t["no"] in ex.get("addedStops", []) else "")
+            trains.append({**t, "tag": ex["tag"],
+                           "note": f'{note}（<a href="{ex["url"]}" target="_blank" rel="noopener">高鐵公告</a>）'})
+    for d in {d for t in trains for d in t["dates"]}:
+        nos = [t["no"] for t in trains if d in t["dates"]]
+        assert len(nos) == len(set(nos)), f"duplicate train numbers on {d}"
+    specials.append({"id": p["id"], "name": p["name"], "from": base["from"], "to": base["to"],
+                     "links": p["links"], "trains": trains})
+
 compact = lambda o: json.dumps(o, ensure_ascii=False, separators=(",", ":"))
-body = src.replace("__TIMETABLE_JSON__", compact(tt)).replace("__MAP_JSON__", compact(geo))
-assert "__TIMETABLE_JSON__" not in body and "__MAP_JSON__" not in body
+body = (src.replace("__TIMETABLE_JSON__", compact(tt)).replace("__MAP_JSON__", compact(geo))
+           .replace("__SPECIAL_JSON__", compact(specials)))
+assert "__TIMETABLE_JSON__" not in body and "__MAP_JSON__" not in body and "__SPECIAL_JSON__" not in body
 
 # title, fonts and styles come before the app markup; they belong in <head>
 split = body.index('<div class="app">')
@@ -28,4 +46,4 @@ dist = ROOT / "dist"
 dist.mkdir(exist_ok=True)
 (dist / "index.html").write_text(standalone, encoding="utf-8")
 (dist / "artifact.html").write_text(body, encoding="utf-8")
-print(f"dist/index.html + dist/artifact.html written: {len(body.encode('utf-8')) / 1024:.1f} KB, {len(tt)} trains")
+print(f"dist/index.html + dist/artifact.html written: {len(body.encode('utf-8')) / 1024:.1f} KB, {len(tt)} regular trains, " + ", ".join(f"{p['name']} {len(p['trains'])} trains" for p in specials))

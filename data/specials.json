@@ -1,0 +1,21 @@
+[
+ {
+  "id": "election-2026",
+  "name": "2026 選舉疏運",
+  "timetable": "special-2026-election.json",
+  "links": [
+   {"label": "疏運時刻表", "url": "https://www.thsrc.com.tw/ArticleContent/a3b630bb-1066-4352-a1ef-58c7b4e8ef7c"},
+   {"label": "11/27 紅眼班次公告", "url": "https://www.thsrc.com.tw/ArticleContent/25425adb-288e-4a11-95ea-71e45184c4be"}
+  ],
+  "extras": [
+   {
+    "file": "special-2026-11-27-redeye.json",
+    "url": "https://www.thsrc.com.tw/ArticleContent/25425adb-288e-4a11-95ea-71e45184c4be",
+    "tag": "紅眼",
+    "note": "11/27 深夜紅眼班次，標準車廂對號座全面 77 折",
+    "addedStops": ["1577", "1579"],
+    "addedStopsNote": "本班次 11/27 新增停靠站"
+   }
+  ]
+ }
+]

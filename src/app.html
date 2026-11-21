@@ -169,6 +169,19 @@ main{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) minmax
 .wk-legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
 .note{margin:10px 0 0;font-size:12.5px;color:var(--muted);line-height:1.6}
 .note b{color:var(--ink);font-weight:500}
+.sp{margin-top:12px;padding-top:10px;border-top:1px solid var(--rule)}
+.sp-head{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:4px 10px;font-size:12.5px;margin-bottom:7px}
+.sp-head a{color:var(--muted);font-size:12px}
+.spdays{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+.spdays button{border:1px solid var(--rule);background:var(--surface);border-radius:8px;padding:5px 0;display:grid;justify-items:center;line-height:1.25}
+.spdays button:hover{background:var(--surface-2)}
+.spdays button b{font:600 16px var(--font-display);font-variant-numeric:tabular-nums}
+.spdays button span{font-size:11.5px;color:var(--muted)}
+.spdays button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.spdays button[aria-pressed="true"] span{color:var(--accent-ink)}
+.tg{display:inline-block;margin-left:5px;padding:0 5px;border-radius:4px;font:700 11px/1.5 var(--font-body);letter-spacing:0;background:var(--accent-soft);color:var(--accent);vertical-align:1px}
+.trnote{margin:8px 0 0;padding:7px 10px;border-radius:8px;background:var(--accent-soft);font-size:12.5px;line-height:1.55}
+.trnote a{color:inherit}
 
 /* train number badge */
 .tno{display:inline-flex;align-items:center;justify-content:center;min-width:48px;padding:1px 7px;border-radius:6px;font:700 15px/1.35 var(--font-display);letter-spacing:.03em;font-variant-numeric:tabular-nums;color:var(--tno-ink)}
@@ -341,7 +354,7 @@ main{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) minmax
         <select id="speedSel" class="btn" aria-label="模擬速度">
           <option value="1">1×</option><option value="10">10×</option><option value="60" selected>60×</option><option value="300">300×</option><option value="900">900×</option>
         </select>
-        <input type="range" id="slider" min="300" max="1500" step="1" value="480" aria-label="模擬時間">
+        <input type="range" id="slider" min="300" max="1580" step="1" value="480" aria-label="模擬時間">
         <output id="sliderOut" for="slider">08:00</output>
       </div>
     </div>
@@ -398,6 +411,7 @@ main{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) minmax
         <div class="week" id="week"></div>
         <div class="wk-legend"><span><i style="background:var(--bar-base)"></i>每日行駛</span><span><i style="background:var(--accent)"></i>僅指定星期行駛</span></div>
         <p class="note" id="sumNote"></p>
+        <div class="sp" id="spBox" hidden></div>
       </section>
 
       <section class="card" id="detail" hidden aria-live="polite"></section>
@@ -425,7 +439,7 @@ main{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) minmax
       </section>
 
       <p class="foot">
-        資料來源：台灣高鐵〈2026/2/2 起適用時刻表〉（<a href="https://www.thsrc.com.tw/ArticleContent/a3b630bb-1066-4352-a1ef-58c7b4e8ef7c" target="_blank" rel="noopener">thsrc.com.tw</a>）。列車位置依時刻表推算（停站 1 分鐘、加減速估算），不含誤點等即時資訊；國定假日與連假疏運期間依高鐵另行公告之時刻表行駛，本系統未納入。
+        資料來源：台灣高鐵〈2026/2/2 起適用時刻表〉、〈2026 選舉疏運時刻表〉（11/27–11/30）與〈11/27 紅眼班次〉公告（<a href="https://www.thsrc.com.tw/ArticleContent/a3b630bb-1066-4352-a1ef-58c7b4e8ef7c" target="_blank" rel="noopener">thsrc.com.tw</a>）。列車位置依時刻表推算（停站 1 分鐘、加減速估算），不含誤點等即時資訊；其他國定假日與連假的疏運時刻表未納入。
       </p>
     </aside>
   </main>
@@ -433,11 +447,13 @@ main{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) minmax
 
 <script id="tt-data" type="application/json">__TIMETABLE_JSON__</script>
 <script id="map-data" type="application/json">__MAP_JSON__</script>
+<script id="special-data" type="application/json">__SPECIAL_JSON__</script>
 <script>
 (() => {
 'use strict';
 const RAW = JSON.parse(document.getElementById('tt-data').textContent);
 const MAP = JSON.parse(document.getElementById('map-data').textContent);
+const SPECIAL_RAW = JSON.parse(document.getElementById('special-data').textContent);
 const SVGNS = 'http://www.w3.org/2000/svg';
 const DAY = ['一','二','三','四','五','六','日'];
 const $ = id => document.getElementById(id);
@@ -503,7 +519,8 @@ function at(s){
 const PRE=8, DWELL=1, POST=3;   // minutes shown at origin before departure / dwell / shown after arrival
 const toMin=s=>{ const [h,m]=s.split(':').map(Number); return h*60+m; };
 const fmt=m=>{ m=((Math.round(m)%1440)+1440)%1440; return String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0'); };
-const TRAINS = RAW.map(r=>{
+// regular trains carry `days` (Mon..Sun flags); special-period trains carry `dates` (ISO strings)
+function prepTrain(r,id){
   const order=r.dir==='S'?[...Array(12).keys()]:[...Array(12).keys()].reverse();
   const stops=[], route=[]; let prev=-1, off=0;
   for (const i of order){
@@ -517,16 +534,40 @@ const TRAINS = RAW.map(r=>{
     else if(k===stops.length-1){ s.arr=s.time; s.dep=s.time+POST; }
     else { s.arr=s.time-DWELL; s.dep=s.time; }
   });
-  const daily=r.days.every(Boolean);
-  return {no:r.no, dir:r.dir, days:r.days, daily, stops, route, from:stops[0].st, to:stops[stops.length-1].st,
+  const daily=r.days?r.days.every(Boolean):false;
+  return {id, no:r.no, dir:r.dir, days:r.days||null, dates:r.dates||null, tag:r.tag||null, note:r.note||null, daily, limited:r.days?!daily:false,
+          stops, route, from:stops[0].st, to:stops[stops.length-1].st,
           start:stops[0].arr, end:stops[stops.length-1].dep, first:stops[0].time, last:stops[stops.length-1].time,
           stopAt:new Map(stops.map(s=>[s.st,s])), nStops:stops.length};
-});
-const BYNO = new Map(TRAINS.map(t=>[t.no,t]));
+}
+const TRAINS = RAW.map(r=>prepTrain(r,r.no));
+// special periods (e.g. 2026 選舉疏運 11/27–11/30) replace the weekly timetable on their dates
+const SPECIAL = SPECIAL_RAW.map(p=>({...p, trains:p.trains.map(r=>prepTrain(r,`${p.id}:${r.no}`))}));
+const BYNO = new Map([...TRAINS, ...SPECIAL.flatMap(p=>p.trains)].map(t=>[t.id,t]));
 const DAYTRAINS = DAY.map((_,d)=>TRAINS.filter(t=>t.days[d]));
 const DAILY_N = TRAINS.filter(t=>t.daily).length;
 const typeLabel = tr => tr.nStops===12 ? '每站停靠' : `停靠 ${tr.nStops} 站`;
-const daysLabel = tr => tr.daily ? '每日行駛' : '週' + tr.days.map((v,i)=>v?DAY[i]:'').join('') + ' 行駛';
+const md = s => `${+s.slice(5,7)}/${+s.slice(8,10)}`;
+const isoAdd = (s,n) => { const [y,m,d]=s.split('-').map(Number); return new Date(Date.UTC(y,m-1,d+n)).toISOString().slice(0,10); };
+const wdOf = s => { const [y,m,d]=s.split('-').map(Number); return (new Date(Date.UTC(y,m-1,d)).getUTCDay()+6)%7; };
+const periodOf = s => (s && SPECIAL.find(p=>s>=p.from && s<=p.to)) || null;
+const periodDates = p => { const out=[]; for(let s=p.from; s<=p.to; s=isoAdd(s,1)) out.push(s); return out; };
+SPECIAL.forEach(p=>{ const n=periodDates(p).length; p.trains.forEach(t=>t.limited=t.dates.length<n); });
+function datesLabel(dates){ // ['2026-11-27','2026-11-28','2026-11-30'] -> '11/27–11/28、11/30'
+  const parts=[]; let a=dates[0], b=dates[0];
+  for (const d of dates.slice(1).concat([null])){ if(d && d===isoAdd(b,1)){ b=d; continue; } parts.push(a===b?md(a):`${md(a)}–${md(b)}`); a=b=d; }
+  return parts.join('、');
+}
+const daysLabel = tr => tr.dates ? '僅 '+datesLabel(tr.dates)+' 行駛'
+  : tr.daily ? '每日行駛' : '週' + tr.days.map((v,i)=>v?DAY[i]:'').join('') + ' 行駛';
+// the timetable in force: a special period on its dates, otherwise the weekday timetable
+let CUR={period:null,list:[],set:new Set()};
+function computeCur(){
+  const period=periodOf(state.date);
+  const list=period ? period.trains.filter(t=>t.dates.includes(state.date)) : DAYTRAINS[state.day];
+  CUR={period,list,set:new Set(list)};
+}
+const curLabel = () => CUR.period ? `${md(state.date)} ${CUR.period.name}` : `週${DAY[state.day]}班表`;
 
 // trapezoidal speed profile: share `a` of the run accelerating and decelerating
 const prof=(u,a)=>{ const v=1/(1-a); return u<a? v*u*u/(2*a) : u>1-a? 1-v*(1-u)*(1-u)/(2*a) : v*(a/2+(u-a)); };
@@ -550,7 +591,8 @@ function trainPos(tr,st){
 }
 
 /* ── clock / simulation state ─────────────────────────────── */
-const state={mode:'live', day:0, min:480, speed:60, playing:true, simDate:null, liveDate:null, sel:null, st:6, tab:'run', ttDir:'S', ttOnly:true, ttQ:'', region:'all'};
+const MAXMIN=1580;   // slider / service day end: 02:20 next morning (11/27 red-eye trains arrive 01:59)
+const state={mode:'live', day:0, date:null, min:480, speed:60, playing:true, liveDate:null, sel:null, st:6, tab:'run', ttDir:'S', ttOnly:true, ttQ:'', region:'all'};
 const tpFmt=new Intl.DateTimeFormat('en-US',{timeZone:'Asia/Taipei',year:'numeric',month:'2-digit',day:'2-digit',weekday:'short',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'});
 const WD={Mon:0,Tue:1,Wed:2,Thu:3,Fri:4,Sat:5,Sun:6};
 function taipeiNow(){
@@ -561,17 +603,18 @@ function taipeiNow(){
 let TODAY_WD=0;
 function syncLive(){
   const n=taipeiNow(); TODAY_WD=n.wd;
-  // service day runs until 02:00 so trains past midnight stay on the previous day's timetable
-  const late=n.h<2, day=late?(n.wd+6)%7:n.wd, min=n.sec/60+(late?1440:0);
-  if (day!==state.day){ state.day=day; onDayChange(); }
+  // service day runs until 03:00 so trains past midnight stay on the previous day's timetable
+  const late=n.h<3, today=`${n.y}-${String(n.mo).padStart(2,'0')}-${String(n.d).padStart(2,'0')}`;
+  const date=late?isoAdd(today,-1):today, day=wdOf(date), min=n.sec/60+(late?1440:0);
   state.min=min; state.liveDate=n; state.late=late;
+  if (day!==state.day || date!==state.date){ state.day=day; state.date=date; onDayChange(); }
 }
 function enterSim(play=true){
   if (state.mode==='sim') return;
   state.mode='sim'; state.playing=play; syncControls();
 }
-function goLive(){ state.mode='live'; state.simDate=null; $('datePick').value=''; syncLive(); onDayChange(); syncControls(); }
-function setDay(d,date=null){ enterSim(); state.day=d; state.simDate=date; if(!date) $('datePick').value=''; onDayChange(); syncControls(); }
+function goLive(){ state.mode='live'; state.date=null; $('datePick').value=''; syncLive(); onDayChange(); syncControls(); }
+function setDay(d,date=null){ enterSim(); state.day=d; state.date=date; $('datePick').value=date||''; onDayChange(); syncControls(); }
 function jumpTo(min){ enterSim(); state.min=min; syncControls(); }
 
 /* ── map ─────────────────────────────── */
@@ -674,7 +717,7 @@ document.querySelectorAll('.regions button').forEach(b=>b.onclick=()=>setRegion(
 const trainEls=new Map(); let ACTIVE=[];
 const BODY='M-14,-4H6C10,-4 13,-2.4 15.5,0C13,2.4 10,4 6,4H-14Q-15.5,4 -15.5,2.5V-2.5Q-15.5,-4 -14,-4Z';
 function makeTrainEl(tr){
-  const g=svgEl('g',{class:'trn '+tr.dir,'data-no':tr.no,role:'button','aria-label':`車次 ${tr.no}`});
+  const g=svgEl('g',{class:'trn '+tr.dir,'data-no':tr.id,role:'button','aria-label':`車次 ${tr.no}`});
   g.innerHTML=`<circle class="ring" r="11"/><circle class="hit" r="15"/><path class="body" d="${BODY}"/><path class="stripe" d="M-13,1.7H7C10,1.7 12,1.1 14.2,0"/><path class="glass" d="M8.5,-2.6C10.5,-2.3 12,-1.6 13,-.7L8.5,-.7Z"/>`;
   const lab=svgEl('text',{class:'tlabel '+tr.dir},tr.no);
   $('trains').appendChild(g); $('trainLabels').appendChild(lab);
@@ -682,7 +725,7 @@ function makeTrainEl(tr){
 }
 function computeActive(){
   const t=state.min, list=[];
-  for (const tr of DAYTRAINS[state.day]){ if(t<tr.start||t>tr.end) continue; const st=trainState(tr,t); if(!st) continue; list.push({tr,st,pos:trainPos(tr,st)}); }
+  for (const tr of CUR.list){ if(t<tr.start||t>tr.end) continue; const st=trainState(tr,t); if(!st) continue; list.push({tr,st,pos:trainPos(tr,st)}); }
   return list;
 }
 function drawTrains(){
@@ -690,11 +733,11 @@ function drawTrains(){
   // markers grow a little as the map zooms in; at whole-island scale they stay compact
   const k=1/pxPerUnit, size=pxPerUnit<0.17?0.56:pxPerUnit<0.3?0.68:pxPerUnit<0.6?0.85:1.05, showLabels=pxPerUnit>0.62, seen=new Set();
   for (const a of ACTIVE){
-    const {tr,st,pos}=a; let el=trainEls.get(tr.no); if(!el){ el=makeTrainEl(tr); trainEls.set(tr.no,el); }
-    seen.add(tr.no);
+    const {tr,st,pos}=a; let el=trainEls.get(tr.id); if(!el){ el=makeTrainEl(tr); trainEls.set(tr.id,el); }
+    seen.add(tr.id);
     const p=at(pos.s), hx=tr.dir==='S'?p.tx:-p.tx, hy=tr.dir==='S'?p.ty:-p.ty; // heading
     const off=(3+4.5*size)*k, x=p.x+hy*off, y=p.y-hx*off, ang=Math.atan2(hy,hx)*180/Math.PI;
-    const sel=state.sel===tr.no;
+    const sel=state.sel===tr.id;
     el.g.setAttribute('transform',`translate(${x.toFixed(1)} ${y.toFixed(1)}) rotate(${ang.toFixed(1)}) scale(${(k*size*(sel?1.35:1)).toFixed(4)})`);
     el.g.classList.toggle('sel',sel); el.g.classList.toggle('dwell',st.mode!=='run');
     const lx=p.x+hy*off*3.3, ly=p.y-hx*off*3.3;
@@ -710,7 +753,7 @@ function drawTrains(){
 /* ── header controls ─────────────────────────────── */
 $('dayBtns').innerHTML=DAY.map((d,i)=>`<button data-d="${i}" aria-pressed="false" title="週${d}班表：${DAYTRAINS[i].length} 班"><b>${d}</b><span>${DAYTRAINS[i].length}</span></button>`).join('');
 $('dayBtns').querySelectorAll('button').forEach(b=>b.onclick=()=>setDay(+b.dataset.d));
-$('datePick').onchange=e=>{ const v=e.target.value; if(!v) return; const [y,m,d]=v.split('-').map(Number); const wd=(new Date(Date.UTC(y,m-1,d)).getUTCDay()+6)%7; setDay(wd,{y,mo:m,d}); };
+$('datePick').onchange=e=>{ const v=e.target.value; if(!v) return; setDay(wdOf(v),v); };
 $('liveBtn').onclick=goLive;
 $('playBtn').onclick=()=>{ if(state.mode==='live'){ enterSim(false); } else state.playing=!state.playing; syncControls(); };
 $('speedSel').onchange=e=>{ state.speed=+e.target.value; if(state.mode==='live') enterSim(true); else state.playing=true; syncControls(); };
@@ -730,25 +773,35 @@ function drawClock(){
   const txt=[Math.floor(secs/3600),Math.floor(secs/60)%60,Math.floor(secs)%60].map(v=>String(v).padStart(2,'0')).join(':');
   if ($('clock').textContent!==txt) $('clock').textContent=txt;
   let when;
-  if (state.mode==='live'){ const n=state.liveDate; when=`${n.y}/${n.mo}/${n.d}（${DAY[n.wd]}）`+(state.late?` · 週${DAY[state.day]}班表延續`:''); }
-  else if (state.simDate){ const s=state.simDate; when=`${s.y}/${s.mo}/${s.d}（${DAY[state.day]}）· 週${DAY[state.day]}班表`; }
+  if (state.mode==='live'){ const n=state.liveDate; when=`${n.y}/${n.mo}/${n.d}（${DAY[n.wd]}）`+(state.late?` · ${md(state.date)}班表延續`:CUR.period?` · ${CUR.period.name}`:''); }
+  else if (state.date){ when=`${state.date.slice(0,4)}/${md(state.date)}（${DAY[state.day]}）· `+(CUR.period?CUR.period.name:`週${DAY[state.day]}班表`); }
   else when=`週${DAY[state.day]}班表`;
   if ($('whenText').textContent!==when) $('whenText').textContent=when;
-  const sl=$('slider'); if (document.activeElement!==sl || state.mode==='live') sl.value=Math.max(300,Math.min(1500,state.min));
+  const sl=$('slider'); if (document.activeElement!==sl || state.mode==='live') sl.value=Math.max(300,Math.min(MAXMIN,state.min));
   const o=fmt(Math.floor(state.min)); if($('sliderOut').textContent!==o) $('sliderOut').textContent=o;
 }
 
 /* ── summary card ─────────────────────────────── */
 function renderSummary(){
-  const d=state.day, list=DAYTRAINS[d], max=Math.max(...DAYTRAINS.map(l=>l.length));
-  $('sumTitle').textContent=`週${DAY[d]}運行概況`;
+  const d=state.day, list=CUR.list, max=Math.max(...DAYTRAINS.map(l=>l.length));
+  $('sumTitle').textContent=CUR.period?`${md(state.date)}（${DAY[d]}）運行概況`:`週${DAY[d]}運行概況`;
   $('kTotal').textContent=list.length; $('kS').textContent=list.filter(t=>t.dir==='S').length; $('kN').textContent=list.filter(t=>t.dir==='N').length;
   $('week').innerHTML=DAYTRAINS.map((l,i)=>{ const x=l.length-DAILY_N; return `<button class="wk" data-d="${i}" aria-pressed="${i===d}" aria-label="週${DAY[i]} ${l.length} 班">
     <span class="cnt">${l.length}</span><span class="bar" style="height:${(l.length/max*76).toFixed(1)}px"><i class="x" style="height:${(x/l.length*100).toFixed(1)}%"></i><i class="b" style="flex:1"></i></span><span class="lab">${DAY[i]}</span></button>`; }).join('');
   $('week').querySelectorAll('.wk').forEach(b=>b.onclick=()=>setDay(+b.dataset.d));
-  const extra=list.length-DAILY_N, peak=DAYTRAINS.map((l,i)=>[l.length,i]).sort((a,b)=>b[0]-a[0]);
+  const extra=DAYTRAINS[d].length-DAILY_N, peak=DAYTRAINS.map((l,i)=>[l.length,i]).sort((a,b)=>b[0]-a[0]);
   const low=peak[6][0], lowDays=DAYTRAINS.map((l,i)=>l.length===low?DAY[i]:'').join('');
-  $('sumNote').innerHTML=`每日固定行駛 <b>${DAILY_N}</b> 班；週${DAY[d]}另有 <b>${extra}</b> 班僅於指定星期行駛的車次。班次最多為週${DAY[peak[0][1]]}（${peak[0][0]} 班）與週${DAY[peak[1][1]]}（${peak[1][0]} 班），最少為週${lowDays.split('').join('、')}（各 ${low} 班）。`;
+  if (CUR.period){
+    const p=CUR.period, base=DAYTRAINS[d].length, diff=list.length-base, tagged=list.filter(t=>t.tag);
+    $('sumNote').innerHTML=`本日適用〈${p.name}〉時刻表（${md(p.from)}–${md(p.to)}），共 <b>${list.length}</b> 班；一般週${DAY[d]}為 ${base} 班，${diff>=0?'多':'少'} ${Math.abs(diff)} 班。`
+      +(tagged.length?`另含 <b>${tagged.length}</b> 班深夜${tagged[0].tag}班次（${tagged.filter(t=>t.dir==='S').length} 南下、${tagged.filter(t=>t.dir==='N').length} 北上），最晚 ${fmt(Math.max(...tagged.map(t=>t.last)))} 抵達。`:'');
+  } else
+    $('sumNote').innerHTML=`每日固定行駛 <b>${DAILY_N}</b> 班；週${DAY[d]}另有 <b>${extra}</b> 班僅於指定星期行駛的車次。班次最多為週${DAY[peak[0][1]]}（${peak[0][0]} 班）與週${DAY[peak[1][1]]}（${peak[1][0]} 班），最少為週${lowDays.split('').join('、')}（各 ${low} 班）。`;
+  $('spBox').hidden=!SPECIAL.length;
+  $('spBox').innerHTML=SPECIAL.map(p=>`<div class="sp-head"><b>特別班表 · ${p.name}</b><span>${p.links.map(l=>`<a href="${l.url}" target="_blank" rel="noopener">${l.label}</a>`).join(' · ')}</span></div>
+    <div class="spdays">${periodDates(p).map(s=>{ const n=p.trains.filter(t=>t.dates.includes(s)).length;
+      return `<button data-date="${s}" aria-pressed="${state.date===s}" title="${md(s)}（${DAY[wdOf(s)]}）${p.name} ${n} 班"><b>${md(s)}</b><span>${DAY[wdOf(s)]} · ${n} 班</span></button>`; }).join('')}</div>`).join('');
+  $('spBox').querySelectorAll('button[data-date]').forEach(b=>b.onclick=()=>setDay(wdOf(b.dataset.date),b.dataset.date));
 }
 
 /* ── tabs ─────────────────────────────── */
@@ -774,13 +827,13 @@ const progress=(tr,t)=>Math.max(0,Math.min(1,(t-tr.first)/(tr.last-tr.first)));
 function renderRunning(){
   const pane=$('pane-run'); const list=[...ACTIVE].sort((a,b)=>a.tr.dir===b.tr.dir? a.tr.first-b.tr.first : a.tr.dir==='S'?-1:1);
   const nS=list.filter(a=>a.tr.dir==='S').length;
-  const key=state.day+'|'+state.sel+'|'+list.map(a=>a.tr.no+statusText(a.tr,a.st)).join(',');
+  const key=state.day+'|'+state.date+'|'+state.sel+'|'+list.map(a=>a.tr.id+statusText(a.tr,a.st)).join(',');
   if (key!==runKey){
     runKey=key;
-    if (!list.length){ pane.innerHTML=`<div class="empty">此刻沒有列車運行（週${DAY[state.day]} ${fmt(state.min)}）。<button class="btn" data-jump="480">看 08:00 尖峰</button></div>`; }
+    if (!list.length){ pane.innerHTML=`<div class="empty">此刻沒有列車運行（${curLabel()} ${fmt(state.min)}）。<button class="btn" data-jump="480">看 08:00 尖峰</button></div>`; }
     else pane.innerHTML=`<div class="subhead"><span>南下 <b>${nS}</b> · 北上 <b>${list.length-nS}</b></span><span>依起站發車時間排序</span></div><ul class="runlist">`+list.map(({tr,st})=>{
       const [nl,nt]=nextStop(tr,st);
-      return `<li><button class="runrow ${tr.dir}${state.sel===tr.no?' sel':''}" data-pick="${tr.no}"><span class="tno ${tr.dir}">${tr.no}</span><span class="rm"><b>${ST[tr.from].zh} → ${ST[tr.to].zh}</b><small>${statusText(tr,st)} · ${typeLabel(tr)}${tr.daily?'':' · 指定日'}</small></span><span class="rn"><small>${nl}</small><b>${fmt(nt)}</b></span><span class="pg"><i data-pg="${tr.no}"></i></span></button></li>`;
+      return `<li><button class="runrow ${tr.dir}${state.sel===tr.id?' sel':''}" data-pick="${tr.id}"><span class="tno ${tr.dir}">${tr.no}</span><span class="rm"><b>${ST[tr.from].zh} → ${ST[tr.to].zh}${tr.tag?`<span class="tg">${tr.tag}</span>`:''}</b><small>${statusText(tr,st)} · ${typeLabel(tr)}${tr.limited?' · 指定日':''}</small></span><span class="rn"><small>${nl}</small><b>${fmt(nt)}</b></span><span class="pg"><i data-pg="${tr.id}"></i></span></button></li>`;
     }).join('')+'</ul>';
   }
   pane.querySelectorAll('[data-pg]').forEach(i=>{ const tr=BYNO.get(i.dataset.pg); i.style.width=(progress(tr,state.min)*100).toFixed(1)+'%'; });
@@ -794,14 +847,14 @@ let boardKey='';
 function renderBoard(){
   const i=state.st, t=state.min, d=state.day;
   $('stChips').querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed',+b.dataset.st===i));
-  const deps=dir=>DAYTRAINS[d].filter(tr=>tr.dir===dir && tr.to!==i && tr.stopAt.has(i) && tr.stopAt.get(i).time>=t-0.5)
+  const deps=dir=>CUR.list.filter(tr=>tr.dir===dir && tr.to!==i && tr.stopAt.has(i) && tr.stopAt.get(i).time>=t-0.5)
       .sort((a,b)=>a.stopAt.get(i).time-b.stopAt.get(i).time).slice(0,6);
   const row=tr=>{ const s=tr.stopAt.get(i), dt=s.time-t; let note, hot=false;
     if (t>=s.arr && t<=s.dep){ note=tr.from===i?'待發':'停靠中'; hot=true; } else if (dt<=5){ note=`${Math.max(1,Math.ceil(dt))} 分後`; hot=true; } else note=`${Math.ceil(dt)} 分後`;
-    return `<div class="brow" data-pick="${tr.no}" style="cursor:pointer"><span class="bt">${fmt(s.time)}</span><span class="bn">${tr.no}</span><span class="bd">往 ${ST[tr.to].zh}<small>${typeLabel(tr)}</small></span><span class="bs${hot?' hot':''}">${note}</span></div>`; };
+    return `<div class="brow" data-pick="${tr.id}" style="cursor:pointer"><span class="bt">${fmt(s.time)}</span><span class="bn">${tr.no}</span><span class="bd">往 ${ST[tr.to].zh}<small>${tr.tag?tr.tag+' · ':''}${typeLabel(tr)}</small></span><span class="bs${hot?' hot':''}">${note}</span></div>`; };
   const blk=(dir,label)=>{ if ((dir==='S'&&i===11)||(dir==='N'&&i===0)) return ''; const l=deps(dir);
     return `<div class="bdir"><h4><span>${label}</span><span>時刻 · 車次 · 終點</span></h4>${l.length?l.map(row).join(''):`<div class="bnone">本日${label}班次已結束</div>`}</div>`; };
-  const html=`<div class="board-head"><div><b>${ST[i].zh}</b><span>${ST[i].en}</span></div><time>${fmt(t)}</time></div>${blk('S','南下 往左營')}${blk('N','北上 往南港')}<div class="board-foot">週${DAY[d]}班表 · 依時刻表推算，非即時誤點資訊</div>`;
+  const html=`<div class="board-head"><div><b>${ST[i].zh}</b><span>${ST[i].en}</span></div><time>${fmt(t)}</time></div>${blk('S','南下 往左營')}${blk('N','北上 往南港')}<div class="board-foot">${curLabel()} · 依時刻表推算，非即時誤點資訊</div>`;
   if (html!==boardKey){ boardKey=html; $('board').innerHTML=html; }
 }
 function selectStation(i,fromMap){
@@ -815,18 +868,21 @@ $('ttOnly').onchange=e=>{ state.ttOnly=e.target.checked; renderTimetable(); };
 $('ttQ').oninput=e=>{ state.ttQ=e.target.value.trim(); renderTimetable(); };
 function renderTimetable(){
   const dir=state.ttDir, d=state.day, order=dir==='S'?[...Array(12).keys()]:[...Array(12).keys()].reverse();
-  const rows=TRAINS.filter(tr=>tr.dir===dir && (!state.ttOnly||tr.days[d]) && (!state.ttQ||tr.no.includes(state.ttQ))).sort((a,b)=>a.first-b.first);
-  const dd=tr=>`<span class="dd mini" title="${daysLabel(tr)}">${tr.days.map((v,k)=>`<i class="${v?'on':''}${k===d?' cur':''}"></i>`).join('')}</span>`;
+  const base=CUR.period?CUR.period.trains:TRAINS, pdates=CUR.period?periodDates(CUR.period):null;
+  const rows=base.filter(tr=>tr.dir===dir && (!state.ttOnly||CUR.set.has(tr)) && (!state.ttQ||tr.no.includes(state.ttQ))).sort((a,b)=>a.first-b.first);
+  const dd=tr=>`<span class="dd mini" title="${daysLabel(tr)}">`+(tr.dates
+    ? pdates.map(s=>`<i class="${tr.dates.includes(s)?'on':''}${s===state.date?' cur':''}"></i>`).join('')
+    : tr.days.map((v,k)=>`<i class="${v?'on':''}${k===d?' cur':''}"></i>`).join(''))+'</span>';
   const passSet=tr=>new Set(tr.route.filter(r=>r.pass).map(r=>r.st));
-  $('tt').innerHTML=`<thead><tr><th>車次</th><th>行駛日</th>${order.map(i=>`<th>${ST[i].zh}</th>`).join('')}</tr></thead><tbody>`+
-    rows.map(tr=>{ const ps=passSet(tr); return `<tr data-row="${tr.no}" data-pick="${tr.no}"${tr.days[d]?'':' class="off"'}><td class="no">${tr.no}</td><td>${dd(tr)}</td>${order.map(i=>{ const s=tr.stopAt.get(i); return `<td>${s?fmt(s.time):ps.has(i)?'<span class="ps" title="不停靠">↓</span>':''}</td>`; }).join('')}</tr>`; }).join('')+'</tbody>';
-  $('ttCount').textContent=`${dir==='S'?'南下':'北上'} ${rows.length} 班${state.ttOnly?`（週${DAY[d]}行駛）`:'（全部車次，淡色為本日不行駛）'} · 「↓」為不停靠`;
+  $('tt').innerHTML=`<thead><tr><th>車次</th><th>${pdates?pdates.map(md).join(' '):'行駛日'}</th>${order.map(i=>`<th>${ST[i].zh}</th>`).join('')}</tr></thead><tbody>`+
+    rows.map(tr=>{ const ps=passSet(tr); return `<tr data-row="${tr.id}" data-pick="${tr.id}"${CUR.set.has(tr)?'':' class="off"'}><td class="no">${tr.no}${tr.tag?`<span class="tg">${tr.tag}</span>`:''}</td><td>${dd(tr)}</td>${order.map(i=>{ const s=tr.stopAt.get(i); return `<td>${s?fmt(s.time):ps.has(i)?'<span class="ps" title="不停靠">↓</span>':''}</td>`; }).join('')}</tr>`; }).join('')+'</tbody>';
+  $('ttCount').textContent=`${dir==='S'?'南下':'北上'} ${rows.length} 班${state.ttOnly?`（${curLabel()}）`:CUR.period?`（${CUR.period.name}全部車次，淡色為本日不行駛）`:'（全部車次，淡色為本日不行駛）'} · 「↓」為不停靠`;
   updateTtStatus();
 }
 function updateTtStatus(){
-  const run=new Set(ACTIVE.map(a=>a.tr.no)), t=state.min, d=state.day;
-  $('tt').querySelectorAll('tr[data-row]').forEach(r=>{ const tr=BYNO.get(r.dataset.row); const on=tr.days[d];
-    r.className=(on?'':'off')+(on&&run.has(tr.no)?' run':'')+(on&&t>tr.end?' gone':'')+(state.sel===tr.no?' sel':''); });
+  const run=new Set(ACTIVE.map(a=>a.tr.id)), t=state.min;
+  $('tt').querySelectorAll('tr[data-row]').forEach(r=>{ const tr=BYNO.get(r.dataset.row); const on=CUR.set.has(tr);
+    r.className=(on?'':'off')+(on&&run.has(tr.id)?' run':'')+(on&&t>tr.end?' gone':'')+(state.sel===tr.id?' sel':''); });
 }
 
 /* ── selected train detail ─────────────────────────────── */
@@ -847,10 +903,10 @@ function renderDetail(){
   const box=$('detail'); const tr=state.sel&&BYNO.get(state.sel);
   if (!tr){ box.hidden=true; detailKey=''; return; }
   box.hidden=false;
-  const t=state.min, runs=!!tr.days[state.day], st=runs?trainState(tr,t):null, pos=st?trainPos(tr,st):null;
+  const t=state.min, runs=CUR.set.has(tr), st=runs?trainState(tr,t):null, pos=st?trainPos(tr,st):null;
   const phase=!runs?'off':st?st.mode:(t<tr.start?'before':'after');
   let status;
-  if (phase==='off') status=`<span>週${DAY[state.day]}不行駛</span><span>${daysLabel(tr)}</span>`;
+  if (phase==='off') status=`<span>${CUR.period?md(state.date):'週'+DAY[state.day]}不行駛</span><span>${daysLabel(tr)}</span>`;
   else if (phase==='before') status=`<span>尚未發車</span><span>${ST[tr.from].zh} <b class="num">${fmt(tr.first)}</b> 開</span>`;
   else if (phase==='after') status=`<span>已抵達 ${ST[tr.to].zh}</span><span><b class="num">${fmt(tr.last)}</b> 到</span>`;
   else { const [nl,nt]=nextStop(tr,st); status=`<b>${statusText(tr,st)}</b><span>${nl} <b class="num">${fmt(nt)}</b></span><span class="spd"><span id="dSpd">${Math.round(pos.v)}</span><small>km/h 估</small></span>`; }
@@ -876,13 +932,16 @@ function renderDetail(){
     <div class="detail-actions">${pos?'<button class="btn" id="dLocate">定位</button>':''}<button class="btn icon" id="dClose" aria-label="關閉">✕</button></div></div>
     ${ART}
     <div class="status">${status}</div>
-    <div class="dayrow"><span>行駛日</span><span class="dd">${tr.days.map((v,k)=>`<i class="${v?'on':''}${k===state.day?' cur':''}">${DAY[k]}</i>`).join('')}</span><span>${tr.daily?'每日':'指定星期'}</span></div>
+    ${tr.note?`<p class="trnote">${tr.note}</p>`:''}
+    <div class="dayrow"><span>行駛日</span>${tr.dates
+      ? `<span class="dd">${periodDates(SPECIAL.find(p=>p.trains.includes(tr))).map(s=>`<i class="${tr.dates.includes(s)?'on':''}${s===state.date?' cur':''}" style="width:auto;padding:0 5px">${md(s)}</i>`).join('')}</span><span>${tr.limited?'指定日期':'疏運期間每日'}</span>`
+      : `<span class="dd">${tr.days.map((v,k)=>`<i class="${v?'on':''}${k===state.day?' cur':''}">${DAY[k]}</i>`).join('')}</span><span>${tr.daily?'每日':'指定星期'}</span>`}</div>
     <ol class="stops">${items}</ol>
     <p class="fleet">N700ST 為台灣高鐵新世代列車，以日本 N700S 為基礎，由日立東芝聯盟製造，共購置 12 組。首組 2026 年 7 月出廠，預計 2027 年 7 月 1 日投入營運；本系統以 N700ST 呈現所有車次。</p>`;
   const key=html.replace(/<span id="dSpd">\d+<\/span>/,'');
   if (key!==detailKey){ detailKey=key; box.innerHTML=html;
     $('dClose').onclick=()=>selectTrain(null);
-    const loc=$('dLocate'); if(loc) loc.onclick=()=>{ const a=ACTIVE.find(x=>x.tr.no===tr.no); if(!a) return; const p=at(a.pos.s); const w=Math.min(vb.w,700); flyTo({x:p.x-w/2,y:p.y-w/2,w,h:w}); clearRegion(); };
+    const loc=$('dLocate'); if(loc) loc.onclick=()=>{ const a=ACTIVE.find(x=>x.tr.id===tr.id); if(!a) return; const p=at(a.pos.s); const w=Math.min(vb.w,700); flyTo({x:p.x-w/2,y:p.y-w/2,w,h:w}); clearRegion(); };
   } else if (pos){ const sp=$('dSpd'); if(sp) sp.textContent=Math.round(pos.v); }
 }
 function selectTrain(no){
@@ -895,11 +954,18 @@ function renderPanels(){
   const nS=ACTIVE.filter(a=>a.tr.dir==='S').length;
   $('lgS').textContent=nS; $('lgN').textContent=ACTIVE.length-nS; $('kRun').textContent=ACTIVE.length; $('tabRunN').textContent=ACTIVE.length;
   const off=!ACTIVE.length; $('offhours').hidden=!off;
-  if (off) $('offText').textContent = state.min<600 ? `首班車約 05:50 發車（週${DAY[state.day]}）。` : `末班車已於約 00:05 抵達（週${DAY[state.day]}班表）。`;
+  if (off && CUR.list.length){ const f=Math.min(...CUR.list.map(t=>t.first)), l=Math.max(...CUR.list.map(t=>t.last));
+    $('offText').textContent = state.min<f ? `首班車 ${fmt(f)} 發車（${curLabel()}）。` : `末班車已於 ${fmt(l)} 抵達（${curLabel()}）。`; }
   renderDetail();
   if (state.tab==='run') renderRunning(); else if (state.tab==='board') renderBoard(); else updateTtStatus();
 }
-function onDayChange(){ runKey=''; boardKey=''; detailKey=''; renderSummary(); renderTimetable(); syncControls(); }
+function onDayChange(){
+  computeCur();
+  // keep the selected train when its number also runs on the new date (e.g. 803 regular ↔ 803 疏運)
+  const sel=state.sel&&BYNO.get(state.sel);
+  if (sel && !CUR.set.has(sel)){ const same=CUR.list.find(t=>t.no===sel.no); if (same) state.sel=same.id; }
+  runKey=''; boardKey=''; detailKey=''; renderSummary(); renderTimetable(); syncControls();
+}
 
 /* ── boot ─────────────────────────────── */
 syncLive(); measure(); onDayChange(); selectStation(6,false); setTab('run');
@@ -912,8 +978,9 @@ function frame(now){
   if (state.mode==='live') syncLive();
   else if (state.playing){
     state.min+=dt*state.speed/60;
-    if (state.min>1500){ state.min=300; state.day=(state.day+1)%7;
-      if (state.simDate){ const n=new Date(Date.UTC(state.simDate.y,state.simDate.mo-1,state.simDate.d+1)); state.simDate={y:n.getUTCFullYear(),mo:n.getUTCMonth()+1,d:n.getUTCDate()}; }
+    if (state.min>MAXMIN){ state.min=300;
+      if (state.date){ state.date=isoAdd(state.date,1); state.day=wdOf(state.date); $('datePick').value=state.date; }
+      else state.day=(state.day+1)%7;
       onDayChange(); }
   }
   stepFly(now); drawTrains(); drawClock();
